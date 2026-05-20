@@ -1,0 +1,5 @@
+node_id,node_name,region,available_capacity_mw
+ES-MAD-001,Madrid North Load Pocket,Madrid,85
+ES-ARA-014,Zaragoza East,Aragon,42
+ES-CAT-022,Tarragona Industrial,Cataluna,38
+ES-AND-018,Sevilla South,Andalucia,210

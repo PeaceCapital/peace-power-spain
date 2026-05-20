@@ -1,0 +1,103 @@
+{
+  "name": "Peace Power - War Room Governor",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "command": "cd \"/Users/oly/Documents/New project/peace-power-spain\" && PYTHONPATH=src python3 scripts/war_room_governor.py war-room"
+      },
+      "id": "run-war-room-governor",
+      "name": "Run War Room Governor",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        520,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.stdout ?? '';\nif (!raw) {\n  throw new Error('war_room_governor.py returned no stdout.');\n}\nconst payload = JSON.parse(raw);\nreturn [{ json: payload }];"
+      },
+      "id": "parse-war-room-json",
+      "name": "Parse War Room JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const probe = $json.probe ?? {};\nconst briefing = $json.briefing ?? {};\nconst blockers = (probe.critical_blockers ?? []).map((item) => `${item.component}: ${item.detail}`);\nconst alerts = (briefing.alerts ?? []).map((item) => `${item.severity} - ${item.alert}`);\nreturn [{\n  json: {\n    headline: probe.has_critical_blocker ? 'Blocked' : 'Ready',\n    blockerSummary: blockers.length ? blockers.join(' | ') : 'No critical blockers.',\n    nextAction: probe.next_action ?? 'No recommendation.',\n    latestRegime: briefing.snapshot?.latest_regime ?? null,\n    latestComposite: briefing.snapshot?.latest_composite ?? null,\n    latestPrice: briefing.snapshot?.latest_price ?? null,\n    hotZone: briefing.snapshot?.hot_zone ?? null,\n    hotZonePressure: briefing.snapshot?.hot_zone_pressure ?? null,\n    marketSource: briefing.market_source ?? null,\n    nodeSource: briefing.node_source ?? null,\n    alertCount: alerts.length,\n    alerts,\n    briefing: briefing.briefing ?? [],\n    readiness: briefing.readiness ?? [],\n    probe,\n    briefingPayload: briefing\n  }\n}];"
+      },
+      "id": "build-operator-payload",
+      "name": "Build Operator Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Run War Room Governor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run War Room Governor": {
+      "main": [
+        [
+          {
+            "node": "Parse War Room JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse War Room JSON": {
+      "main": [
+        [
+          {
+            "node": "Build Operator Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "peace-power"
+    },
+    {
+      "name": "war-room"
+    }
+  ]
+}

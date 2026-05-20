@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "peace-power-spain"
+version = "0.1.0"
+description = "Spain/Iberia power-market research toolkit for pricing, storage, and congestion."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "numpy>=1.24",
+  "pandas>=2.0",
+  "requests>=2.31",
+  "matplotlib>=3.7",
+  "scikit-learn>=1.3",
+  "streamlit>=1.34",
+  "xgboost>=2.0",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+dependencies = [
+  "numpy>=1.24,<2.0",       # pin below 2.x — XGBoost binary compat
+  "pandas>=2.0,<3.0",
+  "scipy>=1.10,<2.0",
+  "scikit-learn>=1.3,<1.5",
+  "xgboost>=2.0,<3.0",
+]
