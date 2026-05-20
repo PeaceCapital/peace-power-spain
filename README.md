@@ -1,4 +1,4 @@
-# Peace Power Spain
+# Peace* Energy Spain
 
 Institutional research stack for Iberian power pricing, storage-adjusted surplus modeling, and congestion analytics.
 
