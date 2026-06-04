@@ -31,6 +31,37 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+import streamlit as st
+
+# Token loading — Streamlit secrets in production, .env locally
+
+def load_token():
+
+    try:
+
+        return st.secrets["f6835be28cb33be5b677a4f8866bec14955f81f7ff39cac08880a8c2fc474792"]
+
+    except Exception:
+
+        env_path = '/Users/oly/Documents/New project/peace-power-spain/.env'
+
+        with open(env_path) as f:
+
+            for line in f:
+
+                line = line.strip()
+
+                if line and not line.startswith('#') and '=' in line:
+
+                    key, val = line.split('=', 1)
+
+                    if key.strip() == 'f6835be28cb33be5b677a4f8866bec14955f81f7ff39cac08880a8c2fc474792':
+
+                        return val.strip()
+
+        return None
+
+TOKEN = load_token()
 
 # ── STYLES ────────────────────────────────────────────────────
 # Helvetica Neue is a system font on macOS/iOS; Arial is the Windows fallback.
