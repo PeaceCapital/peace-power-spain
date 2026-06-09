@@ -2,6 +2,3 @@ streamlit==1.38.0
 pandas==2.2.2
 numpy==1.26.4
 requests==2.31.0
-scikit-learn==1.4.2
-xgboost==2.0.3
-scipy==1.13.0
