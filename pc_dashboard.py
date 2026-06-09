@@ -36,30 +36,29 @@ import streamlit as st
 # Token loading — Streamlit secrets in production, .env locally
 
 def load_token():
-
+    # 1. Try Streamlit secrets
     try:
-
-        return st.secrets["f6835be28cb33be5b677a4f8866bec14955f81f7ff39cac08880a8c2fc474792"]
-
+        return st.secrets["ESIOS_TOKEN"]
     except Exception:
-
-        env_path = '/Users/oly/Documents/New project/peace-power-spain/.env'
-
+        pass
+    # 2. Try environment variable (Railway)
+    import os
+    token = os.environ.get("ESIOS_TOKEN")
+    if token:
+        return token
+    # 3. Try local .env file (local development only)
+    env_path = '/Users/oly/Documents/New project/peace-power-spain/.env'
+    try:
         with open(env_path) as f:
-
             for line in f:
-
                 line = line.strip()
-
                 if line and not line.startswith('#') and '=' in line:
-
                     key, val = line.split('=', 1)
-
-                    if key.strip() == 'f6835be28cb33be5b677a4f8866bec14955f81f7ff39cac08880a8c2fc474792':
-
+                    if key.strip() == 'ESIOS_TOKEN':
                         return val.strip()
-
-        return None
+    except FileNotFoundError:
+        pass
+    return None
 
 TOKEN = load_token()
 
