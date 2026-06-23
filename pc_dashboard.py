@@ -56,98 +56,76 @@ st.set_page_config(
 )
 
 # ── GLOBAL CSS ────────────────────────────────────────────────
+HV = '"Helvetica Neue", Helvetica, Arial, sans-serif'
+
 def inject_css() -> None:
     st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap');
-
     html, body, [class*="css"] { background: #090909 !important; }
-
     .stApp { background: #090909 !important; }
 
-    /* Remove all Streamlit chrome */
     #MainMenu, footer, header { display: none !important; }
-    [data-testid="stSidebar"]         { display: none !important; }
-    [data-testid="collapsedControl"]  { display: none !important; }
+    [data-testid="stSidebar"]        { display: none !important; }
+    [data-testid="collapsedControl"] { display: none !important; }
 
-    /* Full-bleed layout */
-    .block-container {
-        padding: 0 !important;
-        max-width: 100% !important;
-    }
+    .block-container { padding: 0 !important; max-width: 100% !important; }
     .main > div { padding: 0 !important; }
 
-    /* Typography */
     body, p, span, div, li {
-        font-family: 'Inter', system-ui, sans-serif;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
         font-weight: 300;
         color: #d8d8d8;
         -webkit-font-smoothing: antialiased;
     }
 
-    /* Tabs */
+    /* Tabs — title case, bold, no numbers */
     .stTabs [data-baseweb="tab-list"] {
-        background: #090909;
-        border-bottom: 1px solid #1a1a1a;
-        gap: 0;
-        padding: 0 24px;
+        background: #090909; border-bottom: 1px solid #1a1a1a; gap: 0; padding: 0 24px;
     }
     .stTabs [data-baseweb="tab"] {
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 10px;
-        font-weight: 500;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-        color: #444444;
-        background: transparent;
-        border-bottom: 2px solid transparent;
-        padding: 10px 18px;
-        margin: 0;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        font-size: 12px; font-weight: 700; letter-spacing: 0.02em; text-transform: none;
+        color: #444444; background: transparent; border-bottom: 2px solid transparent;
+        padding: 11px 20px; margin: 0;
     }
     .stTabs [aria-selected="true"] {
-        color: #f5a623 !important;
-        border-bottom: 2px solid #f5a623 !important;
-        background: transparent !important;
+        color: #f5a623 !important; border-bottom: 2px solid #f5a623 !important; background: transparent !important;
     }
-    .stTabs [data-baseweb="tab-panel"] {
-        padding: 0 !important;
-        background: #090909;
-    }
+    .stTabs [data-baseweb="tab-panel"] { padding: 0 !important; background: #090909; }
 
-    /* Buttons */
     .stButton > button {
-        background: transparent;
-        border: 1px solid #f5a623;
-        color: #f5a623;
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 10px;
-        font-weight: 500;
-        letter-spacing: 0.16em;
-        text-transform: uppercase;
-        padding: 8px 20px;
-        border-radius: 0;
-        transition: background 0.15s;
+        background: transparent; border: 1px solid #f5a623; color: #f5a623;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+        padding: 8px 20px; border-radius: 0; transition: background 0.15s;
     }
-    .stButton > button:hover {
-        background: rgba(245,166,35,0.08);
-    }
+    .stButton > button:hover { background: rgba(245,166,35,0.08); }
 
-    /* Dataframes */
     .stDataFrame { background: #0d0d0d !important; }
     [data-testid="stDataFrame"] { border: 1px solid #1a1a1a !important; border-radius: 0 !important; }
 
-    /* Alerts */
     .stSuccess { background: rgba(38,194,129,0.08); border-left: 3px solid #26c281; border-radius: 0; }
     .stError   { background: rgba(231,76,60,0.08);  border-left: 3px solid #e74c3c; border-radius: 0; }
     .stWarning { background: rgba(245,166,35,0.08); border-left: 3px solid #f5a623; border-radius: 0; }
 
-    /* Scrollbar */
     ::-webkit-scrollbar { width: 4px; height: 4px; }
     ::-webkit-scrollbar-track { background: #090909; }
     ::-webkit-scrollbar-thumb { background: #1f1f1f; }
 
-    /* Tab content padding */
     .tab-content { padding: 24px 28px; }
+
+    /* Scrolling ticker */
+    @keyframes pc-ticker {
+        0%   { transform: translateX(0); }
+        100% { transform: translateX(-50%); }
+    }
+    .pc-ticker-track {
+        display: inline-flex;
+        animation: pc-ticker 38s linear infinite;
+        white-space: nowrap;
+        align-items: center;
+    }
+    .pc-ticker-track:hover { animation-play-state: paused; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -192,7 +170,7 @@ def _fig(height: int = 260) -> go.Figure:
         paper_bgcolor=C_BG,
         plot_bgcolor=C_SURFACE,
         height=height,
-        font=dict(color=C_DIM2, family="IBM Plex Mono, monospace", size=9),
+        font=dict(color=C_DIM2, family="Helvetica Neue, Helvetica, Arial, sans-serif", size=9),
         margin=dict(t=20, b=28, l=52, r=16),
         xaxis=dict(
             gridcolor=C_BORDER,
@@ -220,7 +198,7 @@ def _fig(height: int = 260) -> go.Figure:
         hoverlabel=dict(
             bgcolor="#141414",
             bordercolor=C_BORDER2,
-            font=dict(color=C_TEXT, size=9, family="IBM Plex Mono, monospace"),
+            font=dict(color=C_TEXT, size=9, family="Helvetica Neue, Helvetica, Arial, sans-serif"),
         ),
         xaxis_rangeslider_visible=False,
     )
@@ -237,197 +215,116 @@ def _html(content: str) -> None:
 def terminal_header(data_source: str, last_dt: str) -> str:
     now = datetime.now().strftime("%d %b %Y  %H:%M")
     live_color = C_GREEN if data_source == "ESIOS LIVE" else C_AMBER
-    return f"""
-    <div style="
-        background:{C_BG};
-        border-bottom:1px solid {C_BORDER2};
-        padding:14px 28px 12px;
-        display:flex;
-        justify-content:space-between;
-        align-items:center;
-    ">
-        <div style="display:flex;align-items:center;gap:20px;">
-            <span style="
-                font-family:'IBM Plex Mono',monospace;
-                font-size:11px;
-                font-weight:600;
-                letter-spacing:0.22em;
-                color:{C_AMBER};
-            ">PEACE*</span>
-            <span style="color:{C_BORDER2};font-family:'IBM Plex Mono',monospace;">|</span>
-            <span style="
-                font-family:'IBM Plex Mono',monospace;
-                font-size:9px;
-                font-weight:500;
-                letter-spacing:0.2em;
-                color:{C_DIM2};
-            ">IBERIA SIGNAL ENGINE</span>
-            <span style="color:{C_BORDER2};font-family:'IBM Plex Mono',monospace;">|</span>
-            <span style="
-                font-family:'IBM Plex Mono',monospace;
-                font-size:9px;
-                font-weight:600;
-                letter-spacing:0.16em;
-                color:{live_color};
-            ">● {data_source}</span>
-        </div>
-        <div style="
-            font-family:'IBM Plex Mono',monospace;
-            font-size:9px;
-            font-weight:400;
-            color:{C_DIM};
-            letter-spacing:0.08em;
-            text-align:right;
-            line-height:1.6;
-        ">
-            <div>{now}</div>
-            <div style="color:{C_DIM};">REF PC-NRG-2026</div>
-        </div>
-    </div>
-    """
+    F = "'Helvetica Neue',Helvetica,Arial,sans-serif"
+    return (
+        f'<div style="background:{C_BG};border-bottom:1px solid {C_BORDER2};padding:13px 28px 11px;display:flex;justify-content:space-between;align-items:center;">'
+        f'<div style="display:flex;align-items:center;gap:18px;">'
+        f'<span style="font-family:{F};font-size:21px;font-weight:700;letter-spacing:-0.02em;color:#ffffff;">'
+        f'Peace<span style="color:{C_AMBER};font-weight:700;">*</span>'
+        f'<span style="font-weight:300;color:#aaaaaa;"> Capital</span>'
+        f'</span>'
+        f'<span style="color:{C_BORDER2};">|</span>'
+        f'<span style="font-family:{F};font-size:12px;font-weight:300;color:{C_DIM2};">Iberia Signal Engine</span>'
+        f'<span style="color:{C_BORDER2};">|</span>'
+        f'<span style="font-family:{F};font-size:11px;font-weight:600;letter-spacing:0.06em;color:{live_color};">● {data_source}</span>'
+        f'</div>'
+        f'<div style="font-family:{F};font-size:10px;font-weight:300;color:{C_DIM};text-align:right;line-height:1.7;">'
+        f'<div style="font-weight:500;color:{C_DIM2};">{now}</div>'
+        f'<div>REF PC-NRG-2026</div>'
+        f'</div></div>'
+    )
+
+
+def ticker_bar(items: list[tuple[str, str, str]]) -> str:
+    """Scrolling exchange-style ticker. items = [(label, value, color), ...]"""
+    F = "'Helvetica Neue',Helvetica,Arial,sans-serif"
+    sep = f'<span style="font-family:{F};color:#2a2a2a;font-size:14px;padding:0 18px;">◆</span>'
+
+    def item_html(label: str, value: str, color: str) -> str:
+        return (
+            f'<span style="display:inline-flex;align-items:baseline;gap:7px;">'
+            f'<span style="font-family:{F};font-size:9px;font-weight:400;letter-spacing:0.14em;text-transform:uppercase;color:#555555;">{label}</span>'
+            f'<span style="font-family:{F};font-size:13px;font-weight:700;color:{color};">{value}</span>'
+            f'</span>'
+        )
+
+    # Build one pass of all items
+    single = sep.join(item_html(l, v, c) for l, v, c in items)
+    # Duplicate for seamless loop
+    content = f'{single}{sep}{single}{sep}'
+
+    return (
+        f'<div style="background:linear-gradient(90deg,#0c0c0a 0%,#0a0c0c 50%,#0c0a0c 100%);'
+        f'border-bottom:1px solid #1e1e1e;border-top:1px solid #1a1a1a;'
+        f'overflow:hidden;height:34px;display:flex;align-items:center;'
+        f'padding-left:16px;">'
+        f'<div class="pc-ticker-track">{content}</div>'
+        f'</div>'
+    )
 
 
 def kpi_strip(items: list[tuple[str, str, str]]) -> str:
-    """items = [(label, value, color), ...]"""
+    F = HV
     cells = ""
     for i, (label, value, color) in enumerate(items):
-        border_left = f"border-left:1px solid {C_BORDER2};" if i > 0 else ""
-        cells += f"""
-        <div style="
-            flex:1;
-            padding:14px 20px;
-            {border_left}
-        ">
-            <div style="
-                font-family:'IBM Plex Mono',monospace;
-                font-size:8px;
-                font-weight:500;
-                letter-spacing:0.2em;
-                text-transform:uppercase;
-                color:{C_DIM};
-                margin-bottom:7px;
-            ">{label}</div>
-            <div style="
-                font-family:'IBM Plex Mono',monospace;
-                font-size:18px;
-                font-weight:600;
-                letter-spacing:-0.02em;
-                color:{color};
-                line-height:1;
-                white-space:nowrap;
-            ">{value}</div>
-        </div>
-        """
-    return f"""
-    <div style="
-        display:flex;
-        background:{C_SURFACE};
-        border-bottom:2px solid {C_BORDER2};
-    ">
-        {cells}
-    </div>
-    """
+        bl = f"border-left:1px solid {C_BORDER2};" if i > 0 else ""
+        cells += (
+            f'<div style="flex:1;padding:14px 20px;{bl}">'
+            f'<div style="font-family:{F};font-size:9px;font-weight:300;letter-spacing:0.16em;text-transform:uppercase;color:{C_DIM};margin-bottom:7px;">{label}</div>'
+            f'<div style="font-family:{F};font-size:17px;font-weight:700;letter-spacing:-0.02em;color:{color};line-height:1;white-space:nowrap;">{value}</div>'
+            f'</div>'
+        )
+    return f'<div style="display:flex;background:{C_SURFACE};border-bottom:2px solid {C_BORDER2};">{cells}</div>'
 
 
 def section_header(text: str) -> str:
-    return f"""
-    <div style="
-        font-family:'IBM Plex Mono',monospace;
-        font-size:8px;
-        font-weight:600;
-        letter-spacing:0.22em;
-        text-transform:uppercase;
-        color:{C_AMBER};
-        padding-bottom:8px;
-        border-bottom:1px solid {C_BORDER};
-        margin-bottom:16px;
-    ">{text}</div>
-    """
+    F = HV
+    return (
+        f'<div style="font-family:{F};font-size:9px;font-weight:700;letter-spacing:0.18em;'
+        f'text-transform:uppercase;color:{C_AMBER};padding-bottom:8px;'
+        f'border-bottom:1px solid {C_BORDER};margin-bottom:16px;">{text}</div>'
+    )
 
 
 def signal_readout_row(label: str, value: str, color: str = C_TEXT, note: str = "") -> str:
-    return f"""
-    <div style="
-        padding:10px 0;
-        border-bottom:1px solid {C_BORDER};
-        display:flex;
-        justify-content:space-between;
-        align-items:baseline;
-    ">
-        <div>
-            <div style="
-                font-family:'IBM Plex Mono',monospace;
-                font-size:8px;
-                font-weight:500;
-                letter-spacing:0.18em;
-                text-transform:uppercase;
-                color:{C_DIM};
-                margin-bottom:3px;
-            ">{label}</div>
-            <div style="
-                font-family:'IBM Plex Mono',monospace;
-                font-size:16px;
-                font-weight:600;
-                color:{color};
-                line-height:1;
-            ">{value}</div>
-        </div>
-        <div style="
-            font-family:'IBM Plex Mono',monospace;
-            font-size:9px;
-            color:{C_DIM};
-            text-align:right;
-        ">{note}</div>
-    </div>
-    """
+    F = HV
+    return (
+        f'<div style="padding:10px 0;border-bottom:1px solid {C_BORDER};display:flex;justify-content:space-between;align-items:baseline;">'
+        f'<div>'
+        f'<div style="font-family:{F};font-size:9px;font-weight:300;letter-spacing:0.14em;text-transform:uppercase;color:{C_DIM};margin-bottom:3px;">{label}</div>'
+        f'<div style="font-family:{F};font-size:16px;font-weight:700;color:{color};line-height:1;">{value}</div>'
+        f'</div>'
+        f'<div style="font-family:{F};font-size:10px;font-weight:300;color:{C_DIM};text-align:right;">{note}</div>'
+        f'</div>'
+    )
 
 
 def guardrail_row(label: str, passed: bool) -> str:
     icon  = "✓" if passed else "✗"
     color = C_GREEN if passed else C_RED
-    return f"""
-    <div style="
-        display:flex;
-        align-items:center;
-        gap:10px;
-        padding:7px 0;
-        border-bottom:1px solid {C_BORDER};
-    ">
-        <span style="
-            font-family:'IBM Plex Mono',monospace;
-            font-size:11px;
-            color:{color};
-            font-weight:600;
-        ">{icon}</span>
-        <span style="
-            font-family:'IBM Plex Mono',monospace;
-            font-size:10px;
-            color:{C_DIM2};
-        ">{label}</span>
-    </div>
-    """
+    F = "font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;"
+    return (
+        f'<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid {C_BORDER};">'
+        f'<span style="{F}font-size:12px;color:{color};font-weight:700;">{icon}</span>'
+        f'<span style="{F}font-size:11px;font-weight:300;color:{C_DIM2};">{label}</span>'
+        f'</div>'
+    )
 
 
 def blotter_row(rec: dict, i: int) -> str:
     d_color = C_RED if rec["direction"] == "SHORT" else (C_GREEN if rec["direction"] == "LONG" else C_DIM)
     bg = C_SURFACE if i % 2 == 0 else C_BG
-    return f"""
-    <div style="
-        display:grid;
-        grid-template-columns:160px 70px 90px 90px 70px 80px;
-        gap:0;
-        padding:8px 12px;
-        background:{bg};
-        border-bottom:1px solid {C_BORDER};
-    ">
-        <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:{C_DIM2};">{rec['timestamp'][:19]}</span>
-        <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;color:{d_color};">{rec['direction']}</span>
-        <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:{C_AMBER};">{rec['fill_price']:.2f} €/MWh</span>
-        <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:{C_DIM2};">{rec['floor_discount']:+.2f} disc</span>
-        <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:{C_DIM2};">{rec['confidence']:.2f} conf</span>
-        <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:{C_TEAL};">{rec['order_id']}</span>
-    </div>
-    """
+    F = "font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;"
+    return (
+        f'<div style="display:grid;grid-template-columns:160px 70px 90px 90px 70px 80px;padding:8px 12px;background:{bg};border-bottom:1px solid {C_BORDER};">'
+        f'<span style="{F}font-size:9px;font-weight:300;color:{C_DIM2};">{rec["timestamp"][:19]}</span>'
+        f'<span style="{F}font-size:10px;font-weight:700;color:{d_color};">{rec["direction"]}</span>'
+        f'<span style="{F}font-size:10px;font-weight:700;color:{C_AMBER};">{rec["fill_price"]:.2f} €/MWh</span>'
+        f'<span style="{F}font-size:10px;font-weight:300;color:{C_DIM2};">{rec["floor_discount"]:+.2f} disc</span>'
+        f'<span style="{F}font-size:10px;font-weight:300;color:{C_DIM2};">{rec["confidence"]:.2f} conf</span>'
+        f'<span style="{F}font-size:9px;font-weight:300;color:{C_TEAL};">{rec["order_id"]}</span>'
+        f'</div>'
+    )
 
 
 # ── CHART BUILDERS ────────────────────────────────────────────
@@ -477,19 +374,19 @@ def chart_floor_discount(live: pd.DataFrame) -> go.Figure:
 def chart_generation(live: pd.DataFrame) -> go.Figure:
     fig = _fig(height=300)
     traces = [
-        ("gen_wind",          "Wind",           "#3a8fd1"),
-        ("gen_solar_pv",      "Solar PV",       C_AMBER),
-        ("gen_solar_thermal", "Solar Thermal",  "#e67e22"),
-        ("gen_hydro",         "Hydro",          C_TEAL),
-        ("gen_nuclear",       "Nuclear",        "#9b59b6"),
+        ("gen_wind",          "Wind",           "#3a8fd1", "rgba(58,143,209,0.5)"),
+        ("gen_solar_pv",      "Solar PV",       C_AMBER,   "rgba(245,166,35,0.5)"),
+        ("gen_solar_thermal", "Solar Thermal",  "#e67e22", "rgba(230,126,34,0.5)"),
+        ("gen_hydro",         "Hydro",          C_TEAL,    "rgba(0,184,169,0.5)"),
+        ("gen_nuclear",       "Nuclear",        "#9b59b6", "rgba(155,89,182,0.5)"),
     ]
-    for col, name, color in traces:
+    for col, name, color, fillcolor in traces:
         if col in live.columns:
             fig.add_trace(go.Scatter(
                 x=live.index, y=live[col],
                 name=name,
                 stackgroup="gen",
-                fillcolor=color.replace("#", "rgba(").replace(")", ",0.55)") if color.startswith("#") else color,
+                fillcolor=fillcolor,
                 line=dict(color=color, width=0.5),
                 hovertemplate=f"{name}: %{{y:,.0f}} MWh/h",
             ))
@@ -670,29 +567,41 @@ else:
 # ── HEADER ────────────────────────────────────────────────────
 _html(terminal_header(data_source, last_dt))
 
-# ── KPI STRIP ─────────────────────────────────────────────────
+# ── TICKER BAR ────────────────────────────────────────────────
 disc_color = C_RED if last_discount < 0 else C_GREEN
+sig_arrow  = {"SHORT": "▼", "LONG": "▲", "NEUTRAL": "—"}.get(cur_dir, "—")
+atc_val    = float(live["atc_es_fr"].dropna().iloc[-1]) if live is not None and "atc_es_fr" in live.columns else 0.0
+
+ticker_items = [
+    ("OMIE Spot",     f"{last_spot:.2f} €/MWh",           C_AMBER),
+    ("Regime",        last_regime,                         regime_color(last_regime)),
+    ("RSI",           f"{last_rsi:.4f}",                   C_TEAL),
+    ("Floor Disc",    f"{last_discount:+.2f} €/MWh",       disc_color),
+    ("Signal",        f"{sig_arrow} {cur_dir}  {cur_conf:.2f}", direction_color(cur_dir)),
+    ("Ann Vol",       f"{vol_annual*100:.1f}%",            "#a0a0a0"),
+    ("B76 Call",      f"{b76_call:.2f} €",                 "#a0a0a0"),
+    ("MC Call",       f"{mc_call:.2f} €",                  "#a0a0a0"),
+    ("Spike Prob",    f"{spike_prob:.4f}",                  C_AMBER2 if spike_prob > 0.1 else "#a0a0a0"),
+    ("Floor",         f"{floor_proxy:.2f} €/MWh",          "#a0a0a0"),
+    ("ATC ES→FR",     f"{atc_val:.0f} MW",                 C_BLUE),
+]
+_html(ticker_bar(ticker_items))
+
+# ── KPI STRIP ─────────────────────────────────────────────────
 kpi_items = [
-    ("OMIE SPOT",    f"{last_spot:.2f} €",              C_AMBER),
-    ("REGIME",       last_regime,                        regime_color(last_regime)),
-    ("RSI",          f"{last_rsi:.4f}",                  C_TEAL),
-    ("FLOOR DISC",   f"{last_discount:+.2f} €/MWh",      disc_color),
-    ("ANN VOL",      f"{vol_annual*100:.1f}%",           C_AMBER),
-    ("B76 CALL",     f"{b76_call:.2f}",                  C_DIM2),
-    ("SPIKE PROB",   f"{spike_prob:.4f}",                C_DIM2),
-    ("SIGNAL",       f"{cur_dir}  {cur_conf:.2f}",       direction_color(cur_dir)),
+    ("OMIE Spot",    f"{last_spot:.2f} €",               C_AMBER),
+    ("Regime",       last_regime,                         regime_color(last_regime)),
+    ("RSI",          f"{last_rsi:.4f}",                   C_TEAL),
+    ("Floor Disc",   f"{last_discount:+.2f} €/MWh",       disc_color),
+    ("Ann Vol",      f"{vol_annual*100:.1f}%",            C_AMBER),
+    ("B76 Call",     f"{b76_call:.2f}",                   C_DIM2),
+    ("Spike Prob",   f"{spike_prob:.4f}",                 C_DIM2),
+    ("Signal",       f"{sig_arrow} {cur_dir}  {cur_conf:.2f}", direction_color(cur_dir)),
 ]
 _html(kpi_strip(kpi_items))
 
 # ── TABS ──────────────────────────────────────────────────────
-tabs = st.tabs([
-    "I  SIGNAL",
-    "II  GENERATION",
-    "III  PRICER",
-    "IV  VOLATILITY",
-    "V  EXECUTION",
-    "VI  READINESS",
-])
+tabs = st.tabs(["Signal", "Generation", "Pricer", "Volatility", "Execution", "Readiness"])
 
 # ── TAB I: SIGNAL ─────────────────────────────────────────────
 with tabs[0]:
@@ -941,20 +850,20 @@ with tabs[4]:
                 text-align:center;
             ">
                 <div style="
-                    font-family:'IBM Plex Mono',monospace;
+                    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
                     font-size:36px;
                     font-weight:700;
                     color:{dir_color};
                     letter-spacing:0.08em;
                 ">{dir_arrow}  {sig.direction}</div>
                 <div style="
-                    font-family:'IBM Plex Mono',monospace;
+                    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
                     font-size:11px;
                     color:{C_DIM2};
                     margin-top:8px;
                 ">conf {sig.confidence:.3f}  |  {sig.regime}</div>
                 <div style="
-                    font-family:'IBM Plex Mono',monospace;
+                    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
                     font-size:10px;
                     color:{C_DIM};
                     margin-top:4px;
@@ -979,7 +888,7 @@ with tabs[4]:
                         st.error(f"BLOCKED: {result.guardrail.reason}")
             else:
                 st.markdown(
-                    f'<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;'
+                    f'<div style="font-family:\'Helvetica Neue\',Helvetica,Arial,sans-serif;font-size:10px;font-weight:300;'
                     f'color:{C_RED};padding:12px;border:1px solid {C_RED};text-align:center;">'
                     f'BLOCKED: {overall.reason}</div>',
                     unsafe_allow_html=True,
@@ -1008,17 +917,17 @@ with tabs[4]:
                     border-bottom:1px solid {C_BORDER2};
                     background:{C_BG};
                 ">
-                    <span style="font-family:'IBM Plex Mono',monospace;font-size:8px;
+                    <span style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:8px;
                                  font-weight:600;letter-spacing:0.14em;color:{C_DIM};">TIMESTAMP</span>
-                    <span style="font-family:'IBM Plex Mono',monospace;font-size:8px;
+                    <span style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:8px;
                                  font-weight:600;letter-spacing:0.14em;color:{C_DIM};">DIR</span>
-                    <span style="font-family:'IBM Plex Mono',monospace;font-size:8px;
+                    <span style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:8px;
                                  font-weight:600;letter-spacing:0.14em;color:{C_DIM};">FILL</span>
-                    <span style="font-family:'IBM Plex Mono',monospace;font-size:8px;
+                    <span style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:8px;
                                  font-weight:600;letter-spacing:0.14em;color:{C_DIM};">DISC</span>
-                    <span style="font-family:'IBM Plex Mono',monospace;font-size:8px;
+                    <span style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:8px;
                                  font-weight:600;letter-spacing:0.14em;color:{C_DIM};">CONF</span>
-                    <span style="font-family:'IBM Plex Mono',monospace;font-size:8px;
+                    <span style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:8px;
                                  font-weight:600;letter-spacing:0.14em;color:{C_DIM};">ORDER ID</span>
                 </div>
                 """
@@ -1071,7 +980,7 @@ with tabs[5]:
             border-bottom:1px solid {C_BORDER};
         ">
             <span style="
-                font-family:'IBM Plex Mono',monospace;
+                font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
                 font-size:8px;
                 font-weight:700;
                 letter-spacing:0.14em;
@@ -1082,13 +991,13 @@ with tabs[5]:
                 text-align:center;
             ">{status}</span>
             <span style="
-                font-family:'IBM Plex Mono',monospace;
+                font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
                 font-size:11px;
                 color:{C_TEXT};
                 min-width:200px;
             ">{cap}</span>
             <span style="
-                font-family:'IBM Plex Mono',monospace;
+                font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
                 font-size:9px;
                 color:{C_DIM};
             ">{note}</span>
@@ -1112,12 +1021,12 @@ with tabs[5]:
             border-bottom:1px solid {C_BORDER};align-items:center;
         ">
             <span style="
-                font-family:'IBM Plex Mono',monospace;
+                font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
                 font-size:8px;font-weight:700;letter-spacing:0.14em;
                 color:{c};border:1px solid {c};
                 padding:2px 10px;min-width:48px;text-align:center;
             ">{priority}</span>
-            <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:{C_DIM2};">{text}</span>
+            <span style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:10px;color:{C_DIM2};">{text}</span>
         </div>
         """)
 
