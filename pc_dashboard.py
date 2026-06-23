@@ -528,6 +528,8 @@ if live is not None:
     last_rsi      = float(live["rsi"].dropna().iloc[-1])
     last_discount = float(live["floor_discount"].dropna().iloc[-1])
     floor_proxy   = float(live["thermal_floor"].iloc[-1])
+    live_ttf      = float(live["ttf"].iloc[-1]) if "ttf" in live.columns else 35.0
+    live_eua      = float(live["eua"].iloc[-1]) if "eua" in live.columns else 65.0
     data_source   = "ESIOS LIVE"
     last_dt       = str(live.index[-1].date())
 else:
@@ -536,6 +538,8 @@ else:
     last_rsi      = 0.0
     last_discount = pricer["price_vs_floor"]
     floor_proxy   = pricer["floor_proxy"]
+    live_ttf      = 35.0
+    live_eua      = 65.0
     data_source   = "CACHED"
     last_dt       = "—"
 
@@ -621,7 +625,8 @@ with tabs[0]:
             _html(section_header("Live Signal Readout"))
             _html(signal_readout_row("REGIME", last_regime, regime_color(last_regime), "RSI + floor ratio"))
             _html(signal_readout_row("OMIE SPOT", f"{last_spot:.2f} EUR/MWh", C_AMBER, "ESIOS ind 600"))
-            _html(signal_readout_row("THERMAL FLOOR", f"{floor_proxy:.2f} EUR/MWh", C_DIM2, "TTF×0.45 + EUA×0.35"))
+            _html(signal_readout_row("THERMAL FLOOR", f"{floor_proxy:.2f} EUR/MWh", C_DIM2,
+                                     f"TTF {live_ttf:.1f} EUR/MWh · EUA {live_eua:.0f} EUR/t"))
             _html(signal_readout_row("FLOOR DISCOUNT", f"{last_discount:+.2f} EUR/MWh", disc_color,
                                      "neg = below floor"))
             _html(signal_readout_row("RSI", f"{last_rsi:.4f}", C_TEAL, "renew / demand"))
@@ -959,11 +964,11 @@ with tabs[5]:
         ("ESIOS ATC ES→FR",       "LIVE"    if live_ok else "MISSING",    "Indicator 10209 — interconnector"),
         ("Spot pricer B76+MC",    "LIVE"    if pricer_ok else "MISSING",  "Shifted log-normal, correct vol"),
         ("Regime classifier",     "LIVE"    if live_ok else "PROXY",      "RSI + floor ratio, rule-based"),
-        ("Thermal floor",         "PROXY",                                "TTF=35, EUA=65 — wire live feeds next"),
+        ("Thermal floor",         "LIVE"    if live_ok else "PROXY",      f"TTF {live_ttf:.1f} EUR/MWh · EUA {live_eua:.0f} EUR/t · CCGT 50%"),
         ("Execution router",      "LIVE"    if exec_ok else "PENDING",    "PaperAdapter — Bloomberg EMSX next"),
         ("BESS sunset model",     "PENDING",                              "Search ESIOS bateria indicators"),
         ("REE node map",          "PENDING",                              "230-node demand map — ingest REE"),
-        ("Daily PDF briefing",    "PENDING",                              "Wire once thermal floor is live"),
+        ("Daily PDF briefing",    "PENDING",                              "Wire Mailjet + scheduler"),
         ("Bloomberg EMSX",        "PENDING",                              "After paper router is validated"),
     ]
 
@@ -1008,10 +1013,10 @@ with tabs[5]:
     _html(section_header("Next Build"))
 
     next_steps = [
-        ("NOW",      C_RED,   "Validate paper router — run SUBMIT PAPER TRADE in Execution tab"),
-        ("NEXT",     C_AMBER, "Wire live TTF + EUA prices to replace hardcoded thermal floor"),
-        ("NEXT",     C_AMBER, "Extend ESIOS history pull to 90 days"),
+        ("NEXT",     C_AMBER, "Upgrade EUA feed from hardcode to licensed ICE/EEX tick"),
+        ("NEXT",     C_AMBER, "Schedule daily data refresh (cron → Railway) to keep pkl fresh"),
         ("SOON",     C_TEAL,  "Search ESIOS 'bateria' indicators for BESS data"),
+        ("SOON",     C_TEAL,  "Wire daily PDF briefing via Mailjet"),
         ("LATER",    C_DIM2,  "Bloomberg EMSX adapter — swap in after paper validates"),
     ]
     for priority, c, text in next_steps:
