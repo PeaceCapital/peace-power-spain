@@ -8,8 +8,11 @@ from __future__ import annotations
 import os
 import pickle
 import sys
-from datetime import datetime, date
+import xml.etree.ElementTree as _ET
+from datetime import datetime, date, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
+from urllib.parse import quote as _urlquote
 
 import numpy as np
 import pandas as pd
@@ -327,6 +330,71 @@ def blotter_row(rec: dict, i: int) -> str:
     )
 
 
+# ── NEWS FEED ─────────────────────────────────────────────────
+_NEWS_UA = {"User-Agent": "Mozilla/5.0 (compatible; PeaceCapital/1.0)"}
+_GN_BASE = "https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q="
+
+_NEWS_TOPICS: list[tuple[str, str, str]] = [
+    ("Oil & Gas",   "TTF+natural+gas+LNG+oil+energy+europe+spain",         C_AMBER),
+    ("Renewables",  "solar+wind+renewable+energy+europe+spain+offshore",    C_GREEN),
+    ("BESS",        "battery+energy+storage+BESS+grid+lithium",             C_TEAL),
+    ("Nuclear",     "nuclear+energy+power+plant+europe+spain+SMR",          C_BLUE),
+]
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def fetch_news(query: str, max_items: int = 7) -> list[dict]:
+    """Pull up to max_items headlines from Google News RSS for the given query."""
+    import requests as _req
+    try:
+        r = _req.get(_GN_BASE + query, headers=_NEWS_UA, timeout=10)
+        r.raise_for_status()
+        root = _ET.fromstring(r.content)
+        channel = root.find("channel")
+        items: list[dict] = []
+        for el in (channel.findall("item") if channel is not None else [])[:max_items]:
+            title = (el.findtext("title") or "").strip()
+            link  = (el.findtext("link")  or "#").strip()
+            pub   = el.findtext("pubDate") or ""
+            src_el = el.find("source")
+            source = src_el.text.strip() if src_el is not None and src_el.text else "—"
+            try:
+                dt    = parsedate_to_datetime(pub)
+                delta = datetime.now(timezone.utc) - dt
+                hrs   = int(delta.total_seconds() / 3600)
+                ago   = f"{int(delta.total_seconds()/60)}m" if hrs < 1 else (f"{hrs}h" if hrs < 24 else f"{hrs//24}d")
+            except Exception:
+                ago = "—"
+            if " - " in title:
+                title = title.rsplit(" - ", 1)[0].strip()
+            items.append({"title": title, "link": link, "source": source, "ago": ago})
+        return items
+    except Exception:
+        return []
+
+
+def _news_panel(items: list[dict], color: str) -> str:
+    F = HV
+    if not items:
+        return f'<div style="font-family:{F};font-size:10px;color:{C_DIM};padding:16px 0;">Feed unavailable</div>'
+    out = ""
+    for i, it in enumerate(items):
+        bl = f"border-top:1px solid {C_BORDER};" if i > 0 else ""
+        src = it["source"].upper()[:30]
+        out += (
+            f'<div style="{bl}padding:10px 0;">'
+            f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">'
+            f'<span style="font-family:{F};font-size:8px;font-weight:700;letter-spacing:0.11em;color:{color};">{src}</span>'
+            f'<span style="font-family:{F};font-size:8px;color:{C_DIM};">{it["ago"]}</span>'
+            f'</div>'
+            f'<a href="{it["link"]}" target="_blank" rel="noopener noreferrer" '
+            f'style="font-family:{F};font-size:11px;font-weight:300;color:{C_TEXT};'
+            f'text-decoration:none;line-height:1.45;display:block;">{it["title"]}</a>'
+            f'</div>'
+        )
+    return out
+
+
 # ── CHART BUILDERS ────────────────────────────────────────────
 def chart_spot_vs_floor(live: pd.DataFrame) -> go.Figure:
     fig = _fig(height=300)
@@ -605,7 +673,7 @@ kpi_items = [
 _html(kpi_strip(kpi_items))
 
 # ── TABS ──────────────────────────────────────────────────────
-tabs = st.tabs(["Signal", "Generation", "Pricer", "Volatility", "Execution", "Readiness"])
+tabs = st.tabs(["Signal", "Generation", "Pricer", "Volatility", "Execution", "Readiness", "News"])
 
 # ── TAB I: SIGNAL ─────────────────────────────────────────────
 with tabs[0]:
@@ -1034,5 +1102,26 @@ with tabs[5]:
             <span style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:10px;color:{C_DIM2};">{text}</span>
         </div>
         """)
+
+    _html("</div>")
+
+# ── TAB VII: NEWS ─────────────────────────────────────────────
+with tabs[6]:
+    _html('<div class="tab-content">')
+    _html(section_header("Energy & Commodity Feed"))
+
+    col_left, col_right = st.columns(2, gap="large")
+
+    for topic, query, color in _NEWS_TOPICS:
+        target_col = col_left if topic in ("Oil & Gas", "Renewables") else col_right
+        with target_col:
+            _html(
+                f'<div style="font-family:{HV};font-size:9px;font-weight:700;'
+                f'letter-spacing:0.18em;text-transform:uppercase;color:{color};'
+                f'padding:10px 0 8px 0;border-bottom:2px solid {color};'
+                f'margin-bottom:0;margin-top:16px;">{topic}</div>'
+            )
+            items = fetch_news(query)
+            _html(_news_panel(items, color))
 
     _html("</div>")
