@@ -373,26 +373,172 @@ def fetch_news(query: str, max_items: int = 7) -> list[dict]:
         return []
 
 
-def _news_panel(items: list[dict], color: str) -> str:
-    F = HV
-    if not items:
-        return f'<div style="font-family:{F};font-size:10px;color:{C_DIM};padding:16px 0;">Feed unavailable</div>'
-    out = ""
-    for i, it in enumerate(items):
-        bl = f"border-top:1px solid {C_BORDER};" if i > 0 else ""
-        src = it["source"].upper()[:30]
-        out += (
-            f'<div style="{bl}padding:10px 0;">'
-            f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">'
-            f'<span style="font-family:{F};font-size:8px;font-weight:700;letter-spacing:0.11em;color:{color};">{src}</span>'
-            f'<span style="font-family:{F};font-size:8px;color:{C_DIM};">{it["ago"]}</span>'
-            f'</div>'
-            f'<a href="{it["link"]}" target="_blank" rel="noopener noreferrer" '
-            f'style="font-family:{F};font-size:11px;font-weight:300;color:{C_TEXT};'
-            f'text-decoration:none;line-height:1.45;display:block;">{it["title"]}</a>'
+def _build_intel_html(
+    regime: str,
+    rsi: float,
+    floor_proxy: float,
+    last_discount: float,
+    live_ttf: float,
+    live_eua: float,
+    direction: str,
+    confidence: float,
+    all_items: list[dict],
+    topic_feeds: list[tuple[str, str, list[dict]]],
+) -> str:
+    now_str = datetime.now().strftime("%d %b %Y · %H:%M UTC")
+    disc_color = "#e74c3c" if last_discount < 0 else "#26c281"
+    dir_color = {"SHORT": "#e74c3c", "LONG": "#26c281"}.get(direction, "#555555")
+    regime_color = {"Renewable-Dom.": "#26c281", "Demand-Stress": "#e74c3c"}.get(regime, "#f5a623")
+
+    # ── Signal brief left column ──────────────────────────────
+    def metric(label: str, value: str, color: str = "#d8d8d8", note: str = "") -> str:
+        note_html = f'<div style="font-size:9px;color:#555;margin-top:2px;">{note}</div>' if note else ""
+        return (
+            f'<div style="padding:10px 0;border-bottom:1px solid #1a1a1a;">'
+            f'<div style="font-size:8px;letter-spacing:0.14em;text-transform:uppercase;color:#555;margin-bottom:4px;">{label}</div>'
+            f'<div style="font-size:16px;font-weight:700;color:{color};line-height:1.1;">{value}</div>'
+            f'{note_html}'
             f'</div>'
         )
-    return out
+
+    # Derive working theses from signal state
+    thesis_items = []
+    if last_discount < -10 and rsi > 0.5:
+        thesis_items.append(("OMIE", "#e74c3c", f"Spot {abs(last_discount):.0f}€ below gas floor — short edge", f"{min(confidence+0.05,0.99):.2f}"))
+    elif last_discount > 15:
+        thesis_items.append(("OMIE", "#26c281", f"Demand stress — spot {last_discount:.0f}€ above floor", f"{confidence:.2f}"))
+    if rsi > 0.65:
+        thesis_items.append(("RSI", "#00b8a9", f"Renewable surplus dominant · RSI {rsi:.3f}", "0.74"))
+    elif rsi < 0.25:
+        thesis_items.append(("RSI", "#f5a623", f"Low renewable cover · RSI {rsi:.3f} — thermal sets price", "0.68"))
+    thesis_items.append(("TTF", "#3a8fd1", f"Gas floor {floor_proxy:.0f} €/MWh · TTF {live_ttf:.1f} · EUA {live_eua:.0f}", "0.61"))
+
+    theses_html = ""
+    for cat, cat_color, text, conf in thesis_items:
+        theses_html += (
+            f'<div style="padding:10px 0;border-bottom:1px solid #1a1a1a;">'
+            f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">'
+            f'<span style="font-size:7px;font-weight:700;letter-spacing:0.14em;border:1px solid {cat_color};color:{cat_color};padding:2px 7px;">{cat}</span>'
+            f'<span style="font-size:9px;font-weight:700;color:#00b8a9;">CONF {conf}</span>'
+            f'</div>'
+            f'<div style="font-size:11px;font-weight:300;color:#d8d8d8;line-height:1.4;">{text}</div>'
+            f'</div>'
+        )
+
+    brief_html = (
+        metric("Regime", regime, regime_color)
+        + metric("OMIE Spot", f"{floor_proxy + last_discount:.2f} EUR/MWh", "#f5a623", f"floor {floor_proxy:.0f} · disc {last_discount:+.1f}")
+        + metric("Floor Discount", f"{last_discount:+.2f} EUR/MWh", disc_color)
+        + metric("RSI", f"{rsi:.4f}", "#00b8a9", "renewable / demand")
+        + metric("Signal", f"{direction} · {confidence:.3f}", dir_color)
+    )
+
+    # ── Live wire (merged feed, newest first) ─────────────────
+    _tag_map = {"Oil & Gas": ("#f5a623", "GAS"), "Renewables": ("#26c281", "RNW"), "BESS": ("#00b8a9", "BSS"), "Nuclear": ("#3a8fd1", "NUC")}
+    wire_html = ""
+    for it in all_items[:22]:
+        tc, abbr = _tag_map.get(it.get("topic", ""), ("#888", "???"))
+        src = it["source"].upper()[:24]
+        wire_html += (
+            f'<div style="padding:10px 0;border-bottom:1px solid #111;">'
+            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">'
+            f'<span style="font-size:7px;font-weight:700;letter-spacing:0.12em;border:1px solid {tc};color:{tc};padding:1px 6px;">{abbr}</span>'
+            f'<span style="font-size:8px;color:#555;">{src}</span>'
+            f'<span style="font-size:8px;color:#444;margin-left:auto;">{it["ago"]}</span>'
+            f'</div>'
+            f'<a href="{it["link"]}" target="_blank" rel="noopener noreferrer" '
+            f'style="font-size:11px;font-weight:300;color:#d8d8d8;text-decoration:none;line-height:1.4;display:block;">'
+            f'{it["title"]}</a>'
+            f'</div>'
+        )
+
+    # ── Topic cards (bottom 4-column strip) ──────────────────
+    topic_cards_html = ""
+    for topic_name, topic_color, topic_items in topic_feeds:
+        abbr = _tag_map.get(topic_name, (topic_color, topic_name[:3].upper()))[1]
+        card_rows = ""
+        for it in topic_items[:4]:
+            card_rows += (
+                f'<div style="padding:8px 0;border-bottom:1px solid #111;">'
+                f'<div style="display:flex;justify-content:space-between;margin-bottom:3px;">'
+                f'<span style="font-size:8px;color:{topic_color};font-weight:700;letter-spacing:0.08em;">{it["source"].upper()[:20]}</span>'
+                f'<span style="font-size:8px;color:#444;">{it["ago"]}</span>'
+                f'</div>'
+                f'<a href="{it["link"]}" target="_blank" rel="noopener noreferrer" '
+                f'style="font-size:10px;font-weight:300;color:#c0c0c0;text-decoration:none;line-height:1.35;display:block;">'
+                f'{it["title"]}</a>'
+                f'</div>'
+            )
+        topic_cards_html += (
+            f'<div style="background:#0d0d0d;border:1px solid #1a1a1a;padding:14px;">'
+            f'<div style="font-size:8px;font-weight:700;letter-spacing:0.2em;text-transform:uppercase;'
+            f'color:{topic_color};border-bottom:2px solid {topic_color};padding-bottom:8px;margin-bottom:0;">'
+            f'{topic_name}</div>'
+            f'{card_rows}'
+            f'</div>'
+        )
+
+    return f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8">
+<style>
+  *{{box-sizing:border-box;margin:0;padding:0}}
+  body{{background:#090909;color:#d8d8d8;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;padding:0 0 32px 0}}
+  a{{color:inherit}}
+  @keyframes pulse{{0%,100%{{opacity:1}}50%{{opacity:0.25}}}}
+  ::-webkit-scrollbar{{width:4px}}
+  ::-webkit-scrollbar-track{{background:#0d0d0d}}
+  ::-webkit-scrollbar-thumb{{background:#2a2a2a}}
+</style>
+</head>
+<body>
+  <!-- HEADER -->
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid #242424;margin-bottom:20px;">
+    <div style="display:flex;align-items:center;gap:14px;">
+      <div style="font-size:14px;font-weight:700;letter-spacing:0.04em;">
+        Peace<span style="color:#f5a623;">*</span> Energy Intel
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;">
+        <div style="width:6px;height:6px;border-radius:50%;background:#26c281;animation:pulse 2s infinite;"></div>
+        <span style="font-size:8px;font-weight:700;letter-spacing:0.14em;color:#26c281;">LIVE</span>
+      </div>
+    </div>
+    <div style="font-size:8px;letter-spacing:0.12em;color:#555;">{now_str} · ESIOS + Google News · 30-min cache</div>
+  </div>
+
+  <!-- TWO-COLUMN MAIN -->
+  <div style="display:grid;grid-template-columns:260px 1fr;gap:28px;margin-bottom:24px;">
+
+    <!-- LEFT: Signal Brief -->
+    <div>
+      <div style="font-size:8px;font-weight:700;letter-spacing:0.2em;text-transform:uppercase;color:#f5a623;padding-bottom:8px;border-bottom:1px solid #1a1a1a;margin-bottom:0;">Signal Brief</div>
+      {brief_html}
+      <div style="font-size:8px;font-weight:700;letter-spacing:0.2em;text-transform:uppercase;color:#f5a623;padding:16px 0 8px 0;border-bottom:1px solid #1a1a1a;margin-bottom:0;">Working Theses</div>
+      {theses_html}
+    </div>
+
+    <!-- RIGHT: Live Wire -->
+    <div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:8px;border-bottom:1px solid #1a1a1a;margin-bottom:0;">
+        <div style="font-size:8px;font-weight:700;letter-spacing:0.2em;text-transform:uppercase;color:#f5a623;">Live Wire</div>
+        <div style="display:flex;gap:10px;">
+          <span style="font-size:7px;font-weight:700;letter-spacing:0.12em;border:1px solid #f5a623;color:#f5a623;padding:1px 5px;">GAS</span>
+          <span style="font-size:7px;font-weight:700;letter-spacing:0.12em;border:1px solid #26c281;color:#26c281;padding:1px 5px;">RNW</span>
+          <span style="font-size:7px;font-weight:700;letter-spacing:0.12em;border:1px solid #00b8a9;color:#00b8a9;padding:1px 5px;">BSS</span>
+          <span style="font-size:7px;font-weight:700;letter-spacing:0.12em;border:1px solid #3a8fd1;color:#3a8fd1;padding:1px 5px;">NUC</span>
+        </div>
+      </div>
+      {wire_html}
+    </div>
+  </div>
+
+  <!-- TOPIC CARDS 4-UP -->
+  <div style="font-size:8px;font-weight:700;letter-spacing:0.2em;text-transform:uppercase;color:#f5a623;padding-bottom:8px;border-bottom:1px solid #242424;margin-bottom:16px;">By Topic</div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+    {topic_cards_html}
+  </div>
+</body>
+</html>"""
 
 
 # ── CHART BUILDERS ────────────────────────────────────────────
@@ -1105,23 +1251,42 @@ with tabs[5]:
 
     _html("</div>")
 
-# ── TAB VII: NEWS ─────────────────────────────────────────────
+# ── TAB VII: NEWS / INTEL ─────────────────────────────────────
 with tabs[6]:
-    _html('<div class="tab-content">')
-    _html(section_header("Energy & Commodity Feed"))
+    topic_feeds_data: list[tuple[str, str, list[dict]]] = []
+    all_wire: list[dict] = []
+    for _topic, _query, _color in _NEWS_TOPICS:
+        _items = fetch_news(_query, max_items=8)
+        topic_feeds_data.append((_topic, _color, _items))
+        for _it in _items:
+            all_wire.append({**_it, "topic": _topic})
 
-    col_left, col_right = st.columns(2, gap="large")
+    # Sort wire by age (hours ascending = newest first) with fallback
+    def _sort_key(x: dict) -> int:
+        ag = x.get("ago", "99d")
+        try:
+            if ag.endswith("m"):  return int(ag[:-1])
+            if ag.endswith("h"):  return int(ag[:-1]) * 60
+            if ag.endswith("d"):  return int(ag[:-1]) * 1440
+        except (ValueError, IndexError):
+            pass
+        return 99999
 
-    for topic, query, color in _NEWS_TOPICS:
-        target_col = col_left if topic in ("Oil & Gas", "Renewables") else col_right
-        with target_col:
-            _html(
-                f'<div style="font-family:{HV};font-size:9px;font-weight:700;'
-                f'letter-spacing:0.18em;text-transform:uppercase;color:{color};'
-                f'padding:10px 0 8px 0;border-bottom:2px solid {color};'
-                f'margin-bottom:0;margin-top:16px;">{topic}</div>'
-            )
-            items = fetch_news(query)
-            _html(_news_panel(items, color))
+    all_wire.sort(key=_sort_key)
 
-    _html("</div>")
+    _dir  = sig.direction  if sig else "—"
+    _conf = sig.confidence if sig else 0.0
+
+    _html_doc = _build_intel_html(
+        regime=last_regime,
+        rsi=last_rsi,
+        floor_proxy=floor_proxy,
+        last_discount=last_discount,
+        live_ttf=live_ttf,
+        live_eua=live_eua,
+        direction=_dir,
+        confidence=_conf,
+        all_items=all_wire,
+        topic_feeds=topic_feeds_data,
+    )
+    st.components.v1.html(_html_doc, height=1600, scrolling=True)
