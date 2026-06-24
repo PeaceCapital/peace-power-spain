@@ -34,16 +34,18 @@ CCGT_VOM = 3.0               # EUR/MWh variable O&M
 
 EUA_HARDCODE = 65.0          # EUR/tCO2 — replace with live feed when licensed
 
-LIVE_INDICATORS: dict[int, tuple[str, dict]] = {
-    600:   ("omie_price",        {"geo_ids[]": 3}),
-    541:   ("gen_wind",          {}),
-    542:   ("gen_solar_pv",      {}),
-    10034: ("gen_solar_thermal", {}),
-    138:   ("gen_hydro",         {}),
-    474:   ("gen_nuclear",       {}),
-    544:   ("demand_forecast",   {}),
-    10209: ("atc_es_fr",         {}),
-}
+# (indicator_id, column_name, extra_params)
+LIVE_INDICATORS: list[tuple[int, str, dict]] = [
+    (600,   "omie_price",        {"geo_ids[]": 3}),   # Spain day-ahead spot
+    (600,   "omie_price_pt",     {"geo_ids[]": 4}),   # Portugal day-ahead spot
+    (541,   "gen_wind",          {}),
+    (542,   "gen_solar_pv",      {}),
+    (10034, "gen_solar_thermal", {}),
+    (138,   "gen_hydro",         {}),
+    (474,   "gen_nuclear",       {}),
+    (544,   "demand_forecast",   {}),
+    (10209, "atc_es_fr",         {}),
+]
 
 OUT_PATH = REPO_ROOT / "pc_live_esios.pkl"
 
@@ -79,6 +81,46 @@ def fetch_ttf_eur_per_mwh() -> float:
     return 40.0
 
 
+def fetch_omip_forward() -> dict[str, float | None]:
+    """Scrape OMIP/EEX settlement prices for M+1 and Q+1 Iberian baseload futures.
+
+    OMIP publishes daily settlement prices at their public market data page.
+    Returns dict with 'm1' and 'q1' in EUR/MWh, or None values on failure.
+    """
+    import re
+    urls = [
+        "https://www.omip.pt/en/dados-mercado/settlement-prices",
+        "https://www.omip.pt/pt/dados-mercado/precos-de-liquidacao",
+    ]
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    }
+    for url in urls:
+        try:
+            r = requests.get(url, headers=headers, timeout=15)
+            if r.status_code != 200:
+                continue
+            # Look for decimal numbers in the 20–200 range (EUR/MWh)
+            # OMIP settlement table has rows like: BL M+1  SPAIN  75.43
+            candidates = re.findall(r'\b(\d{2,3}[.,]\d{2})\b', r.text)
+            prices = []
+            for c in candidates:
+                try:
+                    prices.append(float(c.replace(",", ".")))
+                except ValueError:
+                    pass
+            # Filter to plausible electricity prices 15–300 EUR/MWh
+            prices = [p for p in prices if 15 < p < 300]
+            if len(prices) >= 2:
+                print(f"  OMIP M+1: {prices[0]:.2f}  Q+1: {prices[1]:.2f} EUR/MWh")
+                return {"m1": prices[0], "q1": prices[1]}
+        except Exception as exc:
+            print(f"  OMIP attempt failed ({url[-30:]}) — {exc}")
+    print("  OMIP fetch failed — forward curve unavailable")
+    return {"m1": None, "q1": None}
+
+
 def compute_thermal_floor(ttf: float, eua: float) -> float:
     return round(ttf / CCGT_EFFICIENCY + eua * CCGT_CO2_FACTOR + CCGT_VOM, 2)
 
@@ -92,7 +134,7 @@ def pull_esios(token: str, start: datetime, end: datetime) -> pd.DataFrame:
     end_str = end.strftime("%Y-%m-%dT23:00:00+02:00")
 
     frames: dict[str, pd.DataFrame] = {}
-    for ind_id, (name, extra) in LIVE_INDICATORS.items():
+    for ind_id, name, extra in LIVE_INDICATORS:
         params = {"start_date": start_str, "end_date": end_str, "time_trunc": "hour", **extra}
         r = requests.get(
             f"{ESIOS_BASE}/indicators/{ind_id}",
@@ -121,7 +163,8 @@ def pull_esios(token: str, start: datetime, end: datetime) -> pd.DataFrame:
     return live
 
 
-def add_derived(live: pd.DataFrame, ttf: float, eua: float, thermal_floor: float) -> pd.DataFrame:
+def add_derived(live: pd.DataFrame, ttf: float, eua: float, thermal_floor: float,
+                omip: dict[str, float | None] | None = None) -> pd.DataFrame:
     live = live.copy()
     live["ttf"] = ttf
     live["eua"] = eua
@@ -135,6 +178,18 @@ def add_derived(live: pd.DataFrame, ttf: float, eua: float, thermal_floor: float
     live["rsi"] = live["gen_renewable"] / demand.clip(lower=1.0)
     live["thermal_floor"] = thermal_floor
     live["floor_discount"] = live["omie_price"] - thermal_floor
+
+    # ES–PT spread (market splitting signal)
+    if "omie_price_pt" in live.columns:
+        live["es_pt_spread"] = (live["omie_price"] - live["omie_price_pt"]).abs()
+
+    # OMIP forward curve (filled as constant scalar column so it exports cleanly)
+    if omip:
+        if omip.get("m1") is not None:
+            live["omip_m1"] = float(omip["m1"])
+            live["forward_basis"] = live["omie_price"] - float(omip["m1"])
+        if omip.get("q1") is not None:
+            live["omip_q1"] = float(omip["q1"])
 
     rsi_thresh = float(live["rsi"].dropna().quantile(0.75))
     price_stress_thresh = float(live["omie_price"].dropna().quantile(0.75))
@@ -177,11 +232,14 @@ def main() -> None:
 
     end = datetime.now()
     start = end - timedelta(days=N_DAYS)
+    print("\n[OMIP]")
+    omip = fetch_omip_forward()
+
     print(f"\n[ESIOS] {N_DAYS}-day pull: {start:%Y-%m-%d} → {end:%Y-%m-%d}")
     live = pull_esios(token, start, end)
 
     print("\n[Derived features]")
-    live = add_derived(live, ttf, eua, floor)
+    live = add_derived(live, ttf, eua, floor, omip)
 
     # Quick regime summary
     if "regime" in live.columns:

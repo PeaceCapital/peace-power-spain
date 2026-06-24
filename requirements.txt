@@ -1,6 +1,6 @@
-streamlit==1.38.0
+flask==3.0.3
 pandas==2.2.2
 numpy==1.26.4
 requests==2.31.0
-plotly>=5.18.0
 yfinance>=0.2.40
+beautifulsoup4>=4.12.0

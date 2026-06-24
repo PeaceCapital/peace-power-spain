@@ -1,0 +1,8 @@
+[build]
+buildCommand = "cd energy-dashboard && npm ci && npm run build"
+
+[deploy]
+startCommand = "python energy_server.py"
+healthcheckPath = "/live_data.json"
+healthcheckTimeout = 120
+restartPolicyType = "on_failure"
