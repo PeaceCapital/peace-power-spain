@@ -145,7 +145,10 @@ def pull_esios(token: str, start: datetime, end: datetime) -> pd.DataFrame:
         if r.status_code != 200:
             print(f"  FAIL {ind_id:>5} — {name} — HTTP {r.status_code}")
             continue
-        values = r.json()["indicator"]["values"]
+        values = r.json().get("indicator", {}).get("values", [])
+        if not values:
+            print(f"  SKIP {ind_id:>5} — {name} — no values returned (indicator empty for this geo/window)")
+            continue
         df = pd.DataFrame(values)[["datetime", "value"]].rename(columns={"value": name})
         df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
         df = df.set_index("datetime")
