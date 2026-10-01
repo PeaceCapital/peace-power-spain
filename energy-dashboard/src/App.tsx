@@ -218,13 +218,10 @@ function useNews() {
   const [loading,  setLoading]  = useState(true)
 
   useEffect(() => {
-    const GN_BASE = 'https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q='
-    const PROXY   = 'https://corsproxy.io/?'
-
     async function fetchTopic(t: typeof NEWS_TOPICS[0]): Promise<NewsItem[]> {
       try {
-        const feedUrl = 'rss' in t ? t.rss : GN_BASE + (t as {query:string}).query
-        const r = await fetch(PROXY + encodeURIComponent(feedUrl))
+        const feedUrl = t.rss
+        const r = await fetch('/api/rss?url=' + encodeURIComponent(feedUrl))
         if (!r.ok) return []
         const text = await r.text()
         return parseRSSXml(text, t)
