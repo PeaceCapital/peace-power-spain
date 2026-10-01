@@ -1,0 +1,5 @@
+{
+  "buildCommand": "cd energy-dashboard && npm ci && npm run build",
+  "outputDirectory": "energy-dashboard/dist",
+  "installCommand": "echo skip"
+}

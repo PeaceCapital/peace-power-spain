@@ -792,11 +792,11 @@ function AnalysisTab({ live, s }: { live: LiveRow[]; s: Scalars }) {
           <DataRow label="Black-76 Call"   value={`${s.b76_call.toFixed(2)} EUR/MWh`}                                 color={PA.dim}                     />
           <DataRow label="MC Call"         value={`${s.mc_call.toFixed(2)} EUR/MWh`}                                  color={PA.dim}                     />
           <DataRow label="Spike Prob"      value={s.spike_prob.toFixed(2)}                                            color={s.spike_prob > 0.1 ? PA.amber : PA.dim} />
-          <DataRow label="ATC ES→FR"    value={s.atc_last      !== undefined ? `${s.atc_last.toFixed(0)} MW`                                                        : '—'} color={s.atc_last      !== undefined ? PA.blue                                                                   : PA.muted} />
-          <DataRow label="OMIP M+1"    value={s.omip_m1      !== undefined ? `${s.omip_m1.toFixed(2)} €/MWh`                                                  : 'Pending — re-run refresh script'} color={s.omip_m1      !== undefined ? PA.teal  : PA.muted} />
-          <DataRow label="OMIP Q+1"    value={s.omip_q1      !== undefined ? `${s.omip_q1.toFixed(2)} €/MWh`                                                  : 'Pending'} color={s.omip_q1      !== undefined ? PA.teal  : PA.muted} />
-          <DataRow label="Fwd Basis"   value={s.forward_basis !== undefined ? `${s.forward_basis >= 0 ? '+' : ''}${s.forward_basis.toFixed(2)} €/MWh`         : 'Pending'} color={s.forward_basis !== undefined ? (s.forward_basis < -5 ? PA.red : s.forward_basis > 5 ? PA.green : PA.dim) : PA.muted} />
-          <DataRow label="ES–PT Spread" value={s.es_pt_spread !== undefined ? `${s.es_pt_spread.toFixed(2)} €/MWh`                                             : 'Pending'} color={s.es_pt_spread  !== undefined ? (s.es_pt_spread > 5 ? PA.amber : PA.dim)                        : PA.muted} />
+          <DataRow label="ATC ES→FR"    value={s.atc_last      != null ? `${s.atc_last.toFixed(0)} MW`                                                        : '—'} color={s.atc_last      != null ? PA.blue                                                                   : PA.muted} />
+          <DataRow label="OMIP M+1"    value={s.omip_m1      != null ? `${s.omip_m1.toFixed(2)} €/MWh`                                                  : 'Pending'} color={s.omip_m1      != null ? PA.teal  : PA.muted} />
+          <DataRow label="OMIP Q+1"    value={s.omip_q1      != null ? `${s.omip_q1.toFixed(2)} €/MWh`                                                  : 'Pending'} color={s.omip_q1      != null ? PA.teal  : PA.muted} />
+          <DataRow label="Fwd Basis"   value={s.forward_basis != null ? `${s.forward_basis >= 0 ? '+' : ''}${s.forward_basis.toFixed(2)} €/MWh`         : 'Pending'} color={s.forward_basis != null ? (s.forward_basis < -5 ? PA.red : s.forward_basis > 5 ? PA.green : PA.dim) : PA.muted} />
+          <DataRow label="ES–PT Spread" value={s.es_pt_spread != null ? `${s.es_pt_spread.toFixed(2)} €/MWh`                                             : 'Pending'} color={s.es_pt_spread  != null ? (s.es_pt_spread > 5 ? PA.amber : PA.dim)                        : PA.muted} />
 
           <div style={{ marginTop: 28 }}>
             <SectionHeader>{`Regime Distribution — ${days}D`}</SectionHeader>
@@ -1582,10 +1582,10 @@ export default function App() {
     { label: 'B76 Call',       value: `${scalars.b76_call.toFixed(2)} €`,                                                color: PA.dim    },
     { label: 'MC Call',        value: `${scalars.mc_call.toFixed(2)} €`,                                                 color: PA.dim    },
     { label: 'Spike Prob',     value: `${(scalars.spike_prob * 100).toFixed(2)}%`,                                       color: scalars.spike_prob > 0.1 ? PA.amber : PA.dim },
-    ...(scalars.atc_last      !== undefined ? [{ label: 'ATC ES→FR',   value: `${scalars.atc_last.toFixed(0)} MW`,    color: PA.blue  }] : []),
-    ...(scalars.omip_m1       !== undefined ? [{ label: 'OMIP M+1',    value: `${scalars.omip_m1.toFixed(2)} €/MWh`, color: PA.teal  }] : []),
-    ...(scalars.forward_basis !== undefined ? [{ label: 'Fwd Basis',   value: `${scalars.forward_basis >= 0 ? '+' : ''}${scalars.forward_basis.toFixed(2)}`, color: scalars.forward_basis < -5 ? PA.red : PA.green }] : []),
-    ...(scalars.es_pt_spread  !== undefined ? [{ label: 'ES-PT',       value: `${scalars.es_pt_spread.toFixed(2)} €`, color: scalars.es_pt_spread > 5 ? PA.amber : PA.dim }] : []),
+    ...(scalars.atc_last      != null ? [{ label: 'ATC ES→FR',   value: `${scalars.atc_last.toFixed(0)} MW`,    color: PA.blue  }] : []),
+    ...(scalars.omip_m1       != null ? [{ label: 'OMIP M+1',    value: `${scalars.omip_m1.toFixed(2)} €/MWh`, color: PA.teal  }] : []),
+    ...(scalars.forward_basis != null ? [{ label: 'Fwd Basis',   value: `${scalars.forward_basis >= 0 ? '+' : ''}${scalars.forward_basis.toFixed(2)}`, color: scalars.forward_basis < -5 ? PA.red : PA.green }] : []),
+    ...(scalars.es_pt_spread  != null ? [{ label: 'ES-PT',       value: `${scalars.es_pt_spread.toFixed(2)} €`, color: scalars.es_pt_spread > 5 ? PA.amber : PA.dim }] : []),
   ] : []
 
   // Stats bar — 8 fixed boxes always visible below the ticker
