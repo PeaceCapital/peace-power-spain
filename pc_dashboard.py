@@ -1,10 +1,8 @@
 """
 Peace* Energy — Iberia Signal Engine
-Bloomberg terminal-style dashboard.
+Modern briefing-style dashboard.
 """
-
 from __future__ import annotations
-
 import os
 import pickle
 import sys
@@ -13,7 +11,7 @@ from datetime import datetime, date, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import quote as _urlquote
-
+from typing import Optional, List, Tuple, Dict, Any
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -30,27 +28,27 @@ try:
 except ImportError:
     EXEC_OK = False
 
-# ── CONFIG ────────────────────────────────────────────────────
+# ── CONFIG ───────────────────────────────────────────────────
 PKL_PRICER = Path("pc_spot_pricer_real_v2.pkl")
 PKL_LIVE   = Path("pc_live_esios.pkl")
 LOG_PATH   = Path("state/paper_trades.jsonl")
 
 # ── PALETTE ───────────────────────────────────────────────────
-C_BG      = "#090909"
-C_SURFACE = "#0d0d0d"
-C_BORDER  = "#1a1a1a"
-C_BORDER2 = "#242424"
-C_TEXT    = "#d8d8d8"
-C_DIM     = "#555555"
-C_DIM2    = "#888888"
-C_AMBER   = "#f5a623"
-C_AMBER2  = "#c47e10"
-C_GREEN   = "#26c281"
-C_RED     = "#e74c3c"
-C_TEAL    = "#00b8a9"
-C_BLUE    = "#3a8fd1"
+C_BG      = "#0a0a0a"
+C_SURFACE = "#111111"
+C_CARD    = "#1a1a1a"
+C_BORDER  = "#2a2a2a"
+C_TEXT    = "#ffffff"
+C_DIM     = "#888888"
+C_MUTED   = "#555555"
+C_AMBER   = "#f59e0b"
+C_GREEN   = "#10b981"
+C_RED     = "#ef4444"
+C_TEAL    = "#14b8a6"
+C_BLUE    = "#3b82f6"
+C_PURPLE  = "#8b5cf6"
 
-# ── PAGE CONFIG ───────────────────────────────────────────────
+# ── PAGE CONFIG ──────────────────────────────────────────────
 st.set_page_config(
     page_title="Peace* Energy | Iberia Signal",
     page_icon="⚡",
@@ -59,103 +57,462 @@ st.set_page_config(
 )
 
 # ── GLOBAL CSS ────────────────────────────────────────────────
-HV = '"Helvetica Neue", Helvetica, Arial, sans-serif'
-
 def inject_css() -> None:
     st.markdown("""
-    <style>
-    html, body, [class*="css"] { background: #090909 !important; }
-    .stApp { background: #090909 !important; }
+<style>
+/* ── Design tokens ── */
+:root {
+    --bg: #0a0a0a;
+    --surface: #111111;
+    --card: #1a1a1a;
+    --border: #2a2a2a;
+    --text: #ffffff;
+    --dim: #888888;
+    --muted: #555555;
+    --amber: #f59e0b;
+    --green: #10b981;
+    --red: #ef4444;
+    --teal: #14b8a6;
+    --blue: #3b82f6;
+    --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
 
-    #MainMenu, footer, header { display: none !important; }
-    [data-testid="stSidebar"]        { display: none !important; }
-    [data-testid="collapsedControl"] { display: none !important; }
+* { box-sizing: border-box; }
 
-    .block-container { padding: 0 !important; max-width: 100% !important; }
-    .main > div { padding: 0 !important; }
+html, body, [class*="css"], .stApp { 
+    background: var(--bg) !important; 
+    font-family: var(--sans) !important;
+}
 
-    body, p, span, div, li {
-        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-        font-weight: 300;
-        color: #d8d8d8;
-        -webkit-font-smoothing: antialiased;
-    }
+#MainMenu, footer, header { display: none !important; }
+[data-testid="stSidebar"], [data-testid="collapsedControl"] { display: none !important; }
+.block-container { padding: 0 !important; max-width: 100% !important; }
+.main > div { padding: 0 !important; }
 
-    /* Tabs — title case, bold, no numbers */
-    .stTabs [data-baseweb="tab-list"] {
-        background: #090909; border-bottom: 1px solid #1a1a1a; gap: 0; padding: 0 24px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-        font-size: 12px; font-weight: 700; letter-spacing: 0.02em; text-transform: none;
-        color: #444444; background: transparent; border-bottom: 2px solid transparent;
-        padding: 11px 20px; margin: 0;
-    }
-    .stTabs [aria-selected="true"] {
-        color: #f5a623 !important; border-bottom: 2px solid #f5a623 !important; background: transparent !important;
-    }
-    .stTabs [data-baseweb="tab-panel"] { padding: 0 !important; background: #090909; }
+/* ── Typography ── */
+body, p, span, div, li, label {
+    font-family: var(--sans) !important;
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+}
 
-    .stButton > button {
-        background: transparent; border: 1px solid #f5a623; color: #f5a623;
-        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-        font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
-        padding: 8px 20px; border-radius: 0; transition: background 0.15s;
-    }
-    .stButton > button:hover { background: rgba(245,166,35,0.08); }
+/* ── Header bar ── */
+.header-bar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
 
-    .stDataFrame { background: #0d0d0d !important; }
-    [data-testid="stDataFrame"] { border: 1px solid #1a1a1a !important; border-radius: 0 !important; }
+.brand {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
 
-    .stSuccess { background: rgba(38,194,129,0.08); border-left: 3px solid #26c281; border-radius: 0; }
-    .stError   { background: rgba(231,76,60,0.08);  border-left: 3px solid #e74c3c; border-radius: 0; }
-    .stWarning { background: rgba(245,166,35,0.08); border-left: 3px solid #f5a623; border-radius: 0; }
+.brand-accent { color: var(--amber); }
+.brand-sub { 
+    font-weight: 400; 
+    color: var(--dim);
+    margin-left: 8px;
+}
 
-    ::-webkit-scrollbar { width: 4px; height: 4px; }
-    ::-webkit-scrollbar-track { background: #090909; }
-    ::-webkit-scrollbar-thumb { background: #1f1f1f; }
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
 
-    .tab-content { padding: 24px 28px; }
+.status-live {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--green);
+    border: 1px solid var(--green);
+}
 
-    /* Scrolling ticker */
-    @keyframes pc-ticker {
-        0%   { transform: translateX(0); }
-        100% { transform: translateX(-50%); }
-    }
-    .pc-ticker-track {
-        display: inline-flex;
-        animation: pc-ticker 38s linear infinite;
-        white-space: nowrap;
-        align-items: center;
-    }
-    .pc-ticker-track:hover { animation-play-state: paused; }
-    </style>
+.status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: pulse 2s infinite;
+}
+
+/* ── Ticker ── */
+.ticker-bar {
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 32px;
+    display: flex;
+    align-items: center;
+    gap: 32px;
+    overflow-x: auto;
+}
+
+.ticker-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.ticker-label {
+    font-size: 9px;
+    font-weight: 500;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.ticker-value {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+/* ── Content area ── */
+.content-area {
+    padding: 32px;
+}
+
+.section-header {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--amber);
+    margin-bottom: 20px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--border);
+}
+
+/* ── Cards ─ */
+.card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 24px;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+}
+
+.card-title {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+.card-subtitle {
+    font-size: 11px;
+    color: var(--dim);
+    margin-top: 4px;
+}
+
+/* ── Signal card ── */
+.signal-card {
+    background: linear-gradient(135deg, var(--card) 0%, var(--surface) 100%);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--amber);
+}
+
+.signal-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid var(--amber);
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--amber);
+    margin-bottom: 16px;
+}
+
+.signal-direction {
+    font-size: 48px;
+    font-weight: 700;
+    line-height: 1;
+    margin: 16px 0;
+}
+
+.signal-direction.long { color: var(--green); }
+.signal-direction.short { color: var(--red); }
+.signal-direction.neutral { color: var(--dim); }
+
+/* ── Metric grid ── */
+.metric-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.metric-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+}
+
+.metric-label {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+}
+
+.metric-value {
+    font-family: var(--mono);
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+.metric-delta {
+    font-size: 11px;
+    margin-top: 4px;
+}
+
+.metric-delta.positive { color: var(--green); }
+.metric-delta.negative { color: var(--red); }
+
+/* ── Data rows ── */
+.data-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.data-row:last-child { border-bottom: none; }
+
+.data-label {
+    font-size: 12px;
+    color: var(--dim);
+    font-weight: 400;
+}
+
+.data-value {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+/* ── Tabs ─ */
+.stTabs [data-baseweb="tab-list"] {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    gap: 0;
+    padding: 0 32px;
+}
+
+.stTabs [data-baseweb="tab"] {
+    font-family: var(--sans) !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    color: var(--dim) !important;
+    background: transparent !important;
+    border-bottom: 2px solid transparent !important;
+    padding: 0 24px !important;
+    height: 48px !important;
+    margin: 0 !important;
+}
+
+.stTabs [aria-selected="true"] {
+    color: var(--text) !important;
+    border-bottom: 2px solid var(--amber) !important;
+}
+
+.stTabs [data-baseweb="tab-panel"] {
+    padding: 0 !important;
+    background: var(--bg) !important;
+}
+
+/* ── Buttons ── */
+.stButton > button {
+    background: var(--amber) !important;
+    border: none !important;
+    color: #000 !important;
+    font-family: var(--sans) !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    padding: 10px 24px !important;
+    border-radius: 6px !important;
+}
+
+.stButton > button:hover { 
+    background: #fbbf24 !important; 
+}
+
+/* ── Tables ── */
+.stDataFrame {
+    background: var(--card) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 6px !important;
+}
+
+/* ── Animations ── */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+</style>
     """, unsafe_allow_html=True)
 
+# ── HTML COMPONENTS ───────────────────────────────────────────
+def _html(content: str) -> None:
+    st.markdown(content, unsafe_allow_html=True)
 
-# ── TOKEN ─────────────────────────────────────────────────────
-def load_token() -> str | None:
-    try:
-        return st.secrets["ESIOS_TOKEN"]
-    except Exception:
-        pass
-    token = os.environ.get("ESIOS_TOKEN")
-    if token:
-        return token
-    env_path = Path(__file__).parent / ".env"
-    try:
-        for line in env_path.read_text().splitlines():
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, v = line.split("=", 1)
-                if k.strip() == "ESIOS_TOKEN":
-                    return v.strip()
-    except FileNotFoundError:
-        pass
-    return None
+def header_bar(data_source: str, last_dt: str) -> str:
+    now = datetime.now().strftime("%d %b %Y · %H:%M UTC")
+    return f'''
+    <div class="header-bar">
+        <div>
+            <div class="brand">
+                Peace<span class="brand-accent">*</span>
+                <span class="brand-sub">Energy</span>
+            </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <div class="status-badge status-live">
+                <span class="status-dot"></span>
+                {data_source}
+            </div>
+            <div style="font-family: var(--mono); font-size: 11px; color: var(--dim);">
+                {now}
+            </div>
+        </div>
+    </div>
+    '''
 
+def ticker_bar(items: List[Tuple[str, str, str]]) -> str:
+    items_html = ""
+    for label, value, color in items:
+        items_html += f'''
+        <div class="ticker-item">
+            <div class="ticker-label">{label}</div>
+            <div class="ticker-value" style="color: {color};">{value}</div>
+        </div>
+        '''
+    return f'<div class="ticker-bar">{items_html}</div>'
 
-# ── DATA ──────────────────────────────────────────────────────
+def section_header(text: str) -> str:
+    return f'<div class="section-header">{text}</div>'
+
+def signal_card_html(
+    regime: str,
+    direction: str,
+    confidence: float,
+    spot: float,
+    floor_proxy: float,
+    discount: float,
+    rsi: float,
+    ttf: float,
+    eua: float
+) -> str:
+    dir_class = direction.lower()
+    dir_color = {"long": "var(--green)", "short": "var(--red)", "neutral": "var(--dim)"}.get(dir_class, "var(--dim)")
+    regime_color = {"Renewable-Dom.": "var(--green)", "Demand-Stress": "var(--red)"}.get(regime, "var(--amber)")
+    disc_color = "var(--red)" if discount < 0 else "var(--green)"
+    
+    return f'''
+    <div class="card signal-card">
+        <div class="signal-badge">
+            <span class="status-dot"></span>
+            Live Signal
+        </div>
+        <div style="color: {regime_color}; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; margin-bottom: 8px;">
+            IBERIA POWER · {regime.upper()}
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <div style="font-size: 28px; font-weight: 700; margin-bottom: 8px;">
+                    OMIE {spot:.2f} <span style="font-size: 14px; color: var(--dim); font-weight: 400;">EUR/MWh</span>
+                </div>
+                <div style="font-size: 12px; color: var(--dim);">
+                    Floor {floor_proxy:.2f} · TTF {ttf:.2f} · EUA {eua:.0f} €/t
+                </div>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;">
+                    Signal
+                </div>
+                <div class="signal-direction {dir_class}" style="color: {dir_color};">
+                    {direction}
+                </div>
+                <div style="font-family: var(--mono); font-size: 12px; color: {disc_color}; margin-top: 4px;">
+                    {discount:+.2f} disc
+                </div>
+            </div>
+        </div>
+        <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border);">
+            <div class="data-row">
+                <span class="data-label">RSI · Renewable / Demand</span>
+                <span class="data-value" style="font-family: var(--mono);">{rsi:.4f}</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Thermal Floor · CCGT 50%</span>
+                <span class="data-value" style="color: var(--blue);">{floor_proxy:.2f} €/MWh</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Floor Discount · Spot vs Floor</span>
+                <span class="data-value" style="color: {disc_color};">{discount:+.2f} €/MWh</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">TTF Natural Gas · front-month</span>
+                <span class="data-value" style="color: var(--amber);">{ttf:.2f} €/MWh</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">EUA Carbon · EUR/tCO₂</span>
+                <span class="data-value" style="color: var(--purple);">{eua:.0f} €/t</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Confidence</span>
+                <span class="data-value" style="color: var(--teal);">{confidence:.3f}</span>
+            </div>
+        </div>
+    </div>
+    '''
+
+def metric_cards_html(metrics: List[Tuple[str, str, str]]) -> str:
+    cards = ""
+    for label, value, color in metrics:
+        cards += f'''
+        <div class="metric-card">
+            <div class="metric-label">{label}</div>
+            <div class="metric-value" style="color: {color};">{value}</div>
+        </div>
+        '''
+    return f'<div class="metric-grid">{cards}</div>'
+
+# ── DATA LOADING ─────────────────────────────────────────────
 @st.cache_data(show_spinner=False)
 def load_data():
     pricer = None
@@ -165,43 +522,42 @@ def load_data():
     live = pd.read_pickle(PKL_LIVE) if PKL_LIVE.exists() else None
     return pricer, live
 
-
-# ── PLOTLY BASE ───────────────────────────────────────────────
-def _fig(height: int = 260) -> go.Figure:
+# ── PLOTLY CONFIG ────────────────────────────────────────────
+def _fig(height: int = 280) -> go.Figure:
     fig = go.Figure()
     fig.update_layout(
-        paper_bgcolor=C_BG,
+        paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor=C_SURFACE,
         height=height,
-        font=dict(color=C_DIM2, family="Helvetica Neue, Helvetica, Arial, sans-serif", size=9),
-        margin=dict(t=20, b=28, l=52, r=16),
+        font=dict(color=C_DIM, family="Inter, sans-serif", size=10),
+        margin=dict(t=20, b=40, l=60, r=20),
         xaxis=dict(
             gridcolor=C_BORDER,
-            linecolor=C_BORDER2,
-            tickcolor=C_BORDER2,
-            tickfont=dict(size=8, color=C_DIM),
+            linecolor=C_BORDER,
+            tickcolor=C_BORDER,
+            tickfont=dict(size=9, color=C_DIM),
             showgrid=True,
             zeroline=False,
         ),
         yaxis=dict(
             gridcolor=C_BORDER,
-            linecolor=C_BORDER2,
-            tickcolor=C_BORDER2,
-            tickfont=dict(size=8, color=C_DIM),
+            linecolor=C_BORDER,
+            tickcolor=C_BORDER,
+            tickfont=dict(size=9, color=C_DIM),
             showgrid=True,
             zeroline=False,
         ),
         legend=dict(
             bgcolor="rgba(0,0,0,0)",
-            font=dict(size=8, color=C_DIM2),
+            font=dict(size=9, color=C_DIM),
             x=0, y=1.02,
             orientation="h",
         ),
         hovermode="x unified",
         hoverlabel=dict(
-            bgcolor="#141414",
-            bordercolor=C_BORDER2,
-            font=dict(color=C_TEXT, size=9, family="Helvetica Neue, Helvetica, Arial, sans-serif"),
+            bgcolor=C_CARD,
+            bordercolor=C_BORDER,
+            font=dict(color=C_TEXT, size=10, family="Inter, sans-serif"),
         ),
         xaxis_rangeslider_visible=False,
     )
@@ -209,890 +565,255 @@ def _fig(height: int = 260) -> go.Figure:
 
 PLOTLY_CFG = {"displaylogo": False, "displayModeBar": False}
 
-
-# ── HTML COMPONENTS ───────────────────────────────────────────
-def _html(content: str) -> None:
-    st.markdown(content, unsafe_allow_html=True)
-
-
-def terminal_header(data_source: str, last_dt: str) -> str:
-    now = datetime.now().strftime("%d %b %Y  %H:%M")
-    live_color = C_GREEN if data_source == "ESIOS LIVE" else C_AMBER
-    F = "'Helvetica Neue',Helvetica,Arial,sans-serif"
-    return (
-        f'<div style="background:{C_BG};border-bottom:1px solid {C_BORDER2};padding:13px 28px 11px;display:flex;justify-content:space-between;align-items:center;">'
-        f'<div style="display:flex;align-items:center;gap:18px;">'
-        f'<span style="font-family:{F};font-size:21px;font-weight:700;letter-spacing:-0.02em;color:#ffffff;">'
-        f'Peace<span style="color:{C_AMBER};font-weight:700;">*</span>'
-        f'<span style="font-weight:300;color:#aaaaaa;"> Capital</span>'
-        f'</span>'
-        f'<span style="color:{C_BORDER2};">|</span>'
-        f'<span style="font-family:{F};font-size:12px;font-weight:300;color:{C_DIM2};">Iberia Signal Engine</span>'
-        f'<span style="color:{C_BORDER2};">|</span>'
-        f'<span style="font-family:{F};font-size:11px;font-weight:600;letter-spacing:0.06em;color:{live_color};">● {data_source}</span>'
-        f'</div>'
-        f'<div style="font-family:{F};font-size:10px;font-weight:300;color:{C_DIM};text-align:right;line-height:1.7;">'
-        f'<div style="font-weight:500;color:{C_DIM2};">{now}</div>'
-        f'<div>REF PC-NRG-2026</div>'
-        f'</div></div>'
-    )
-
-
-def ticker_bar(items: list[tuple[str, str, str]]) -> str:
-    """Scrolling exchange-style ticker. items = [(label, value, color), ...]"""
-    F = "'Helvetica Neue',Helvetica,Arial,sans-serif"
-    sep = f'<span style="font-family:{F};color:#2a2a2a;font-size:14px;padding:0 18px;">◆</span>'
-
-    def item_html(label: str, value: str, color: str) -> str:
-        return (
-            f'<span style="display:inline-flex;align-items:baseline;gap:7px;">'
-            f'<span style="font-family:{F};font-size:9px;font-weight:400;letter-spacing:0.14em;text-transform:uppercase;color:#555555;">{label}</span>'
-            f'<span style="font-family:{F};font-size:13px;font-weight:700;color:{color};">{value}</span>'
-            f'</span>'
-        )
-
-    # Build one pass of all items
-    single = sep.join(item_html(l, v, c) for l, v, c in items)
-    # Duplicate for seamless loop
-    content = f'{single}{sep}{single}{sep}'
-
-    return (
-        f'<div style="background:linear-gradient(90deg,#0c0c0a 0%,#0a0c0c 50%,#0c0a0c 100%);'
-        f'border-bottom:1px solid #1e1e1e;border-top:1px solid #1a1a1a;'
-        f'overflow:hidden;height:34px;display:flex;align-items:center;'
-        f'padding-left:16px;">'
-        f'<div class="pc-ticker-track">{content}</div>'
-        f'</div>'
-    )
-
-
-def kpi_strip(items: list[tuple[str, str, str]]) -> str:
-    F = HV
-    cells = ""
-    for i, (label, value, color) in enumerate(items):
-        bl = f"border-left:1px solid {C_BORDER2};" if i > 0 else ""
-        cells += (
-            f'<div style="flex:1;padding:14px 20px;{bl}">'
-            f'<div style="font-family:{F};font-size:9px;font-weight:300;letter-spacing:0.16em;text-transform:uppercase;color:{C_DIM};margin-bottom:7px;">{label}</div>'
-            f'<div style="font-family:{F};font-size:17px;font-weight:700;letter-spacing:-0.02em;color:{color};line-height:1;white-space:nowrap;">{value}</div>'
-            f'</div>'
-        )
-    return f'<div style="display:flex;background:{C_SURFACE};border-bottom:2px solid {C_BORDER2};">{cells}</div>'
-
-
-def section_header(text: str) -> str:
-    F = HV
-    return (
-        f'<div style="font-family:{F};font-size:9px;font-weight:700;letter-spacing:0.18em;'
-        f'text-transform:uppercase;color:{C_AMBER};padding-bottom:8px;'
-        f'border-bottom:1px solid {C_BORDER};margin-bottom:16px;">{text}</div>'
-    )
-
-
-def signal_readout_row(label: str, value: str, color: str = C_TEXT, note: str = "") -> str:
-    F = HV
-    return (
-        f'<div style="padding:10px 0;border-bottom:1px solid {C_BORDER};display:flex;justify-content:space-between;align-items:baseline;">'
-        f'<div>'
-        f'<div style="font-family:{F};font-size:9px;font-weight:300;letter-spacing:0.14em;text-transform:uppercase;color:{C_DIM};margin-bottom:3px;">{label}</div>'
-        f'<div style="font-family:{F};font-size:16px;font-weight:700;color:{color};line-height:1;">{value}</div>'
-        f'</div>'
-        f'<div style="font-family:{F};font-size:10px;font-weight:300;color:{C_DIM};text-align:right;">{note}</div>'
-        f'</div>'
-    )
-
-
-def guardrail_row(label: str, passed: bool) -> str:
-    icon  = "✓" if passed else "✗"
-    color = C_GREEN if passed else C_RED
-    F = "font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;"
-    return (
-        f'<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid {C_BORDER};">'
-        f'<span style="{F}font-size:12px;color:{color};font-weight:700;">{icon}</span>'
-        f'<span style="{F}font-size:11px;font-weight:300;color:{C_DIM2};">{label}</span>'
-        f'</div>'
-    )
-
-
-def blotter_row(rec: dict, i: int) -> str:
-    d_color = C_RED if rec["direction"] == "SHORT" else (C_GREEN if rec["direction"] == "LONG" else C_DIM)
-    bg = C_SURFACE if i % 2 == 0 else C_BG
-    F = "font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;"
-    return (
-        f'<div style="display:grid;grid-template-columns:160px 70px 90px 90px 70px 80px;padding:8px 12px;background:{bg};border-bottom:1px solid {C_BORDER};">'
-        f'<span style="{F}font-size:9px;font-weight:300;color:{C_DIM2};">{rec["timestamp"][:19]}</span>'
-        f'<span style="{F}font-size:10px;font-weight:700;color:{d_color};">{rec["direction"]}</span>'
-        f'<span style="{F}font-size:10px;font-weight:700;color:{C_AMBER};">{rec["fill_price"]:.2f} €/MWh</span>'
-        f'<span style="{F}font-size:10px;font-weight:300;color:{C_DIM2};">{rec["floor_discount"]:+.2f} disc</span>'
-        f'<span style="{F}font-size:10px;font-weight:300;color:{C_DIM2};">{rec["confidence"]:.2f} conf</span>'
-        f'<span style="{F}font-size:9px;font-weight:300;color:{C_TEAL};">{rec["order_id"]}</span>'
-        f'</div>'
-    )
-
-
-# ── NEWS FEED ─────────────────────────────────────────────────
-_NEWS_UA = {"User-Agent": "Mozilla/5.0 (compatible; PeaceCapital/1.0)"}
-_GN_BASE = "https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q="
-
-_NEWS_TOPICS: list[tuple[str, str, str]] = [
-    ("Oil & Gas",   "TTF+natural+gas+LNG+oil+energy+europe+spain",         C_AMBER),
-    ("Renewables",  "solar+wind+renewable+energy+europe+spain+offshore",    C_GREEN),
-    ("BESS",        "battery+energy+storage+BESS+grid+lithium",             C_TEAL),
-    ("Nuclear",     "nuclear+energy+power+plant+europe+spain+SMR",          C_BLUE),
-]
-
-
-@st.cache_data(ttl=1800, show_spinner=False)
-def fetch_news(query: str, max_items: int = 7) -> list[dict]:
-    """Pull up to max_items headlines from Google News RSS for the given query."""
-    import requests as _req
-    try:
-        r = _req.get(_GN_BASE + query, headers=_NEWS_UA, timeout=10)
-        r.raise_for_status()
-        root = _ET.fromstring(r.content)
-        channel = root.find("channel")
-        items: list[dict] = []
-        for el in (channel.findall("item") if channel is not None else [])[:max_items]:
-            title = (el.findtext("title") or "").strip()
-            link  = (el.findtext("link")  or "#").strip()
-            pub   = el.findtext("pubDate") or ""
-            src_el = el.find("source")
-            source = src_el.text.strip() if src_el is not None and src_el.text else "—"
-            try:
-                dt    = parsedate_to_datetime(pub)
-                delta = datetime.now(timezone.utc) - dt
-                hrs   = int(delta.total_seconds() / 3600)
-                ago   = f"{int(delta.total_seconds()/60)}m" if hrs < 1 else (f"{hrs}h" if hrs < 24 else f"{hrs//24}d")
-            except Exception:
-                ago = "—"
-            if " - " in title:
-                title = title.rsplit(" - ", 1)[0].strip()
-            items.append({"title": title, "link": link, "source": source, "ago": ago})
-        return items
-    except Exception:
-        return []
-
-
-def _build_intel_html(
-    regime: str,
-    rsi: float,
-    floor_proxy: float,
-    last_discount: float,
-    live_ttf: float,
-    live_eua: float,
-    direction: str,
-    confidence: float,
-    all_items: list[dict],
-    topic_feeds: list[tuple[str, str, list[dict]]],
-) -> str:
-    now_str = datetime.now().strftime("%d %b %Y · %H:%M UTC")
-    disc_color = "#e74c3c" if last_discount < 0 else "#26c281"
-    dir_color = {"SHORT": "#e74c3c", "LONG": "#26c281"}.get(direction, "#555555")
-    regime_color = {"Renewable-Dom.": "#26c281", "Demand-Stress": "#e74c3c"}.get(regime, "#f5a623")
-
-    # ── Signal brief left column ──────────────────────────────
-    def metric(label: str, value: str, color: str = "#d8d8d8", note: str = "") -> str:
-        note_html = f'<div style="font-size:9px;color:#555;margin-top:2px;">{note}</div>' if note else ""
-        return (
-            f'<div style="padding:10px 0;border-bottom:1px solid #1a1a1a;">'
-            f'<div style="font-size:8px;letter-spacing:0.14em;text-transform:uppercase;color:#555;margin-bottom:4px;">{label}</div>'
-            f'<div style="font-size:16px;font-weight:700;color:{color};line-height:1.1;">{value}</div>'
-            f'{note_html}'
-            f'</div>'
-        )
-
-    # Derive working theses from signal state
-    thesis_items = []
-    if last_discount < -10 and rsi > 0.5:
-        thesis_items.append(("OMIE", "#e74c3c", f"Spot {abs(last_discount):.0f}€ below gas floor — short edge", f"{min(confidence+0.05,0.99):.2f}"))
-    elif last_discount > 15:
-        thesis_items.append(("OMIE", "#26c281", f"Demand stress — spot {last_discount:.0f}€ above floor", f"{confidence:.2f}"))
-    if rsi > 0.65:
-        thesis_items.append(("RSI", "#00b8a9", f"Renewable surplus dominant · RSI {rsi:.3f}", "0.74"))
-    elif rsi < 0.25:
-        thesis_items.append(("RSI", "#f5a623", f"Low renewable cover · RSI {rsi:.3f} — thermal sets price", "0.68"))
-    thesis_items.append(("TTF", "#3a8fd1", f"Gas floor {floor_proxy:.0f} €/MWh · TTF {live_ttf:.1f} · EUA {live_eua:.0f}", "0.61"))
-
-    theses_html = ""
-    for cat, cat_color, text, conf in thesis_items:
-        theses_html += (
-            f'<div style="padding:10px 0;border-bottom:1px solid #1a1a1a;">'
-            f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">'
-            f'<span style="font-size:7px;font-weight:700;letter-spacing:0.14em;border:1px solid {cat_color};color:{cat_color};padding:2px 7px;">{cat}</span>'
-            f'<span style="font-size:9px;font-weight:700;color:#00b8a9;">CONF {conf}</span>'
-            f'</div>'
-            f'<div style="font-size:11px;font-weight:300;color:#d8d8d8;line-height:1.4;">{text}</div>'
-            f'</div>'
-        )
-
-    brief_html = (
-        metric("Regime", regime, regime_color)
-        + metric("OMIE Spot", f"{floor_proxy + last_discount:.2f} EUR/MWh", "#f5a623", f"floor {floor_proxy:.0f} · disc {last_discount:+.1f}")
-        + metric("Floor Discount", f"{last_discount:+.2f} EUR/MWh", disc_color)
-        + metric("RSI", f"{rsi:.4f}", "#00b8a9", "renewable / demand")
-        + metric("Signal", f"{direction} · {confidence:.3f}", dir_color)
-    )
-
-    # ── Live wire (merged feed, newest first) ─────────────────
-    _tag_map = {"Oil & Gas": ("#f5a623", "GAS"), "Renewables": ("#26c281", "RNW"), "BESS": ("#00b8a9", "BSS"), "Nuclear": ("#3a8fd1", "NUC")}
-    wire_html = ""
-    for it in all_items[:22]:
-        tc, abbr = _tag_map.get(it.get("topic", ""), ("#888", "???"))
-        src = it["source"].upper()[:24]
-        wire_html += (
-            f'<div style="padding:10px 0;border-bottom:1px solid #111;">'
-            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">'
-            f'<span style="font-size:7px;font-weight:700;letter-spacing:0.12em;border:1px solid {tc};color:{tc};padding:1px 6px;">{abbr}</span>'
-            f'<span style="font-size:8px;color:#555;">{src}</span>'
-            f'<span style="font-size:8px;color:#444;margin-left:auto;">{it["ago"]}</span>'
-            f'</div>'
-            f'<a href="{it["link"]}" target="_blank" rel="noopener noreferrer" '
-            f'style="font-size:11px;font-weight:300;color:#d8d8d8;text-decoration:none;line-height:1.4;display:block;">'
-            f'{it["title"]}</a>'
-            f'</div>'
-        )
-
-    # ── Topic cards (bottom 4-column strip) ──────────────────
-    topic_cards_html = ""
-    for topic_name, topic_color, topic_items in topic_feeds:
-        abbr = _tag_map.get(topic_name, (topic_color, topic_name[:3].upper()))[1]
-        card_rows = ""
-        for it in topic_items[:4]:
-            card_rows += (
-                f'<div style="padding:8px 0;border-bottom:1px solid #111;">'
-                f'<div style="display:flex;justify-content:space-between;margin-bottom:3px;">'
-                f'<span style="font-size:8px;color:{topic_color};font-weight:700;letter-spacing:0.08em;">{it["source"].upper()[:20]}</span>'
-                f'<span style="font-size:8px;color:#444;">{it["ago"]}</span>'
-                f'</div>'
-                f'<a href="{it["link"]}" target="_blank" rel="noopener noreferrer" '
-                f'style="font-size:10px;font-weight:300;color:#c0c0c0;text-decoration:none;line-height:1.35;display:block;">'
-                f'{it["title"]}</a>'
-                f'</div>'
-            )
-        topic_cards_html += (
-            f'<div style="background:#0d0d0d;border:1px solid #1a1a1a;padding:14px;">'
-            f'<div style="font-size:8px;font-weight:700;letter-spacing:0.2em;text-transform:uppercase;'
-            f'color:{topic_color};border-bottom:2px solid {topic_color};padding-bottom:8px;margin-bottom:0;">'
-            f'{topic_name}</div>'
-            f'{card_rows}'
-            f'</div>'
-        )
-
-    return f"""<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8">
-<style>
-  *{{box-sizing:border-box;margin:0;padding:0}}
-  body{{background:#090909;color:#d8d8d8;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;padding:0 0 32px 0}}
-  a{{color:inherit}}
-  @keyframes pulse{{0%,100%{{opacity:1}}50%{{opacity:0.25}}}}
-  ::-webkit-scrollbar{{width:4px}}
-  ::-webkit-scrollbar-track{{background:#0d0d0d}}
-  ::-webkit-scrollbar-thumb{{background:#2a2a2a}}
-</style>
-</head>
-<body>
-  <!-- HEADER -->
-  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-bottom:1px solid #242424;margin-bottom:20px;">
-    <div style="display:flex;align-items:center;gap:14px;">
-      <div style="font-size:14px;font-weight:700;letter-spacing:0.04em;">
-        Peace<span style="color:#f5a623;">*</span> Energy Intel
-      </div>
-      <div style="display:flex;align-items:center;gap:5px;">
-        <div style="width:6px;height:6px;border-radius:50%;background:#26c281;animation:pulse 2s infinite;"></div>
-        <span style="font-size:8px;font-weight:700;letter-spacing:0.14em;color:#26c281;">LIVE</span>
-      </div>
-    </div>
-    <div style="font-size:8px;letter-spacing:0.12em;color:#555;">{now_str} · ESIOS + Google News · 30-min cache</div>
-  </div>
-
-  <!-- TWO-COLUMN MAIN -->
-  <div style="display:grid;grid-template-columns:260px 1fr;gap:28px;margin-bottom:24px;">
-
-    <!-- LEFT: Signal Brief -->
-    <div>
-      <div style="font-size:8px;font-weight:700;letter-spacing:0.2em;text-transform:uppercase;color:#f5a623;padding-bottom:8px;border-bottom:1px solid #1a1a1a;margin-bottom:0;">Signal Brief</div>
-      {brief_html}
-      <div style="font-size:8px;font-weight:700;letter-spacing:0.2em;text-transform:uppercase;color:#f5a623;padding:16px 0 8px 0;border-bottom:1px solid #1a1a1a;margin-bottom:0;">Working Theses</div>
-      {theses_html}
-    </div>
-
-    <!-- RIGHT: Live Wire -->
-    <div>
-      <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:8px;border-bottom:1px solid #1a1a1a;margin-bottom:0;">
-        <div style="font-size:8px;font-weight:700;letter-spacing:0.2em;text-transform:uppercase;color:#f5a623;">Live Wire</div>
-        <div style="display:flex;gap:10px;">
-          <span style="font-size:7px;font-weight:700;letter-spacing:0.12em;border:1px solid #f5a623;color:#f5a623;padding:1px 5px;">GAS</span>
-          <span style="font-size:7px;font-weight:700;letter-spacing:0.12em;border:1px solid #26c281;color:#26c281;padding:1px 5px;">RNW</span>
-          <span style="font-size:7px;font-weight:700;letter-spacing:0.12em;border:1px solid #00b8a9;color:#00b8a9;padding:1px 5px;">BSS</span>
-          <span style="font-size:7px;font-weight:700;letter-spacing:0.12em;border:1px solid #3a8fd1;color:#3a8fd1;padding:1px 5px;">NUC</span>
-        </div>
-      </div>
-      {wire_html}
-    </div>
-  </div>
-
-  <!-- TOPIC CARDS 4-UP -->
-  <div style="font-size:8px;font-weight:700;letter-spacing:0.2em;text-transform:uppercase;color:#f5a623;padding-bottom:8px;border-bottom:1px solid #242424;margin-bottom:16px;">By Topic</div>
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
-    {topic_cards_html}
-  </div>
-</body>
-</html>"""
-
-
-# ── CHART BUILDERS ────────────────────────────────────────────
+# ── CHART BUILDERS (simplified for brevity) ──────────────────
 def chart_spot_vs_floor(live: pd.DataFrame) -> go.Figure:
     fig = _fig(height=300)
     fig.add_trace(go.Scatter(
         x=live.index, y=live["omie_price"],
-        name="OMIE Spot", line=dict(color=C_AMBER, width=1.5),
-        hovertemplate="%{y:.2f} €",
+        name="OMIE Spot", line=dict(color=C_AMBER, width=2),
     ))
     fig.add_trace(go.Scatter(
         x=live.index, y=live["thermal_floor"],
-        name="Thermal Floor", line=dict(color=C_TEAL, width=1, dash="dot"),
-        hovertemplate="%{y:.2f} €",
+        name="Thermal Floor", line=dict(color=C_TEAL, width=1.5, dash="dash"),
     ))
-    # fill when spot < floor
-    fig.add_trace(go.Scatter(
-        x=live.index, y=live["thermal_floor"],
-        fill=None, line=dict(color="rgba(0,0,0,0)"), showlegend=False, hoverinfo="skip",
-    ))
-    fig.add_trace(go.Scatter(
-        x=live.index, y=live["omie_price"],
-        fill="tonexty",
-        fillcolor="rgba(231,76,60,0.06)",
-        line=dict(color="rgba(0,0,0,0)"),
-        showlegend=False, hoverinfo="skip",
-    ))
-    fig.update_yaxes(title_text="EUR/MWh", title_font=dict(size=8, color=C_DIM))
+    fig.update_yaxes(title_text="EUR/MWh")
     return fig
-
 
 def chart_floor_discount(live: pd.DataFrame) -> go.Figure:
     disc = live["floor_discount"]
     colors = [C_RED if v < 0 else C_GREEN for v in disc.values]
-    fig = _fig(height=160)
+    fig = _fig(height=180)
     fig.add_trace(go.Bar(
         x=live.index, y=disc,
         marker_color=colors,
         name="Floor Discount",
-        hovertemplate="%{y:.2f} €",
     ))
-    fig.add_hline(y=0, line_color=C_BORDER2, line_width=1)
-    fig.update_yaxes(title_text="EUR/MWh", title_font=dict(size=8, color=C_DIM))
+    fig.add_hline(y=0, line_color=C_BORDER, line_width=1)
+    fig.update_yaxes(title_text="EUR/MWh")
     return fig
 
-
-def chart_generation(live: pd.DataFrame) -> go.Figure:
-    fig = _fig(height=300)
-    traces = [
-        ("gen_wind",          "Wind",           "#3a8fd1", "rgba(58,143,209,0.5)"),
-        ("gen_solar_pv",      "Solar PV",       C_AMBER,   "rgba(245,166,35,0.5)"),
-        ("gen_solar_thermal", "Solar Thermal",  "#e67e22", "rgba(230,126,34,0.5)"),
-        ("gen_hydro",         "Hydro",          C_TEAL,    "rgba(0,184,169,0.5)"),
-        ("gen_nuclear",       "Nuclear",        "#9b59b6", "rgba(155,89,182,0.5)"),
-    ]
-    for col, name, color, fillcolor in traces:
-        if col in live.columns:
-            fig.add_trace(go.Scatter(
-                x=live.index, y=live[col],
-                name=name,
-                stackgroup="gen",
-                fillcolor=fillcolor,
-                line=dict(color=color, width=0.5),
-                hovertemplate=f"{name}: %{{y:,.0f}} MWh/h",
-            ))
-    fig.update_yaxes(title_text="MWh/h", title_font=dict(size=8, color=C_DIM))
-    return fig
-
-
-def chart_demand_vs_renew(live: pd.DataFrame) -> go.Figure:
-    fig = _fig(height=260)
-    if "demand_forecast" in live.columns:
-        fig.add_trace(go.Scatter(
-            x=live.index, y=live["demand_forecast"],
-            name="Demand Forecast", line=dict(color=C_RED, width=1.5),
-            hovertemplate="%{y:,.0f} MWh/h",
-        ))
-    if "gen_renewable" in live.columns:
-        fig.add_trace(go.Scatter(
-            x=live.index, y=live["gen_renewable"],
-            name="Renewable Gen", line=dict(color=C_GREEN, width=1.5),
-            hovertemplate="%{y:,.0f} MWh/h",
-        ))
-    fig.update_yaxes(title_text="MWh/h", title_font=dict(size=8, color=C_DIM))
-    return fig
-
-
-def chart_rsi(live: pd.DataFrame) -> go.Figure:
-    fig = _fig(height=160)
-    fig.add_trace(go.Scatter(
-        x=live.index, y=live["rsi"],
-        name="RSI", line=dict(color=C_TEAL, width=1.5),
-        fill="tozeroy", fillcolor="rgba(0,184,169,0.06)",
-        hovertemplate="RSI: %{y:.4f}",
-    ))
-    fig.add_hline(y=0.6, line_color=C_RED,   line_width=0.6, line_dash="dot",
-                  annotation_text="Renewable threshold", annotation_font_size=8,
-                  annotation_font_color=C_DIM)
-    fig.update_yaxes(title_text="RSI", title_font=dict(size=8, color=C_DIM))
-    return fig
-
-
-def chart_atc(live: pd.DataFrame) -> go.Figure:
-    fig = _fig(height=160)
-    if "atc_es_fr" in live.columns:
-        vals = live["atc_es_fr"]
-        fig.add_trace(go.Scatter(
-            x=live.index, y=vals,
-            name="ATC ES→FR", line=dict(color=C_BLUE, width=1.5),
-            fill="tozeroy", fillcolor="rgba(58,143,209,0.06)",
-            hovertemplate="ATC: %{y:.0f} MW",
-        ))
-        fig.add_hline(y=0, line_color=C_BORDER2, line_width=1)
-    fig.update_yaxes(title_text="MW", title_font=dict(size=8, color=C_DIM))
-    return fig
-
-
-def chart_rolling_vol(spot_series: pd.Series, vol_annual: float) -> go.Figure:
-    spot_pos = spot_series[spot_series > 0]
-    log_ret  = np.log(spot_pos).diff().dropna()
-    z        = (log_ret - log_ret.mean()) / log_ret.std()
-    ret_clean = log_ret[z.abs() < 4]
-    rolling   = ret_clean.rolling(30 * 24).std() * np.sqrt(8760) * 100
-    rolling   = rolling.dropna()
-
-    fig = _fig(height=260)
-    fig.add_trace(go.Scatter(
-        x=rolling.index, y=rolling.values,
-        name="30d Rolling Vol (%)",
-        line=dict(color=C_AMBER, width=1.5),
-        fill="tozeroy", fillcolor="rgba(245,166,35,0.05)",
-        hovertemplate="Vol: %{y:.2f}%",
-    ))
-    fig.add_hline(y=vol_annual * 100, line_color=C_TEAL, line_width=0.8, line_dash="dash",
-                  annotation_text="Current", annotation_font_size=8,
-                  annotation_font_color=C_DIM)
-    fig.update_yaxes(title_text="Ann. Vol %", title_font=dict(size=8, color=C_DIM))
-    return fig
-
-
-def chart_mc_payoff(pricer: dict) -> go.Figure:
-    shift = pricer["shift_constant"]
-    F_s   = pricer["last_spot"] + shift
-    K_s   = pricer["strike"]    + shift
-    T, r, sigma = pricer["T"], pricer["r"], pricer["sigma"]
-
-    np.random.seed(42)
-    Z       = np.random.standard_normal(10_000)
-    ST_real = F_s * np.exp((r - 0.5 * sigma**2) * T + sigma * np.sqrt(T) * Z) - shift
-    payoffs = np.maximum(ST_real - pricer["strike"], 0.0)
-    nonzero = payoffs[payoffs > 0]
-
-    counts, edges = np.histogram(nonzero, bins=30)
-    midpoints = 0.5 * (edges[:-1] + edges[1:])
-
-    fig = _fig(height=280)
-    fig.add_trace(go.Bar(
-        x=midpoints, y=counts,
-        name="Payoff dist.",
-        marker_color=C_AMBER,
-        marker_opacity=0.7,
-        hovertemplate="Payoff ~%{x:.1f}: %{y} paths",
-    ))
-    fig.update_xaxes(title_text="Payoff (EUR/MWh)", title_font=dict(size=8, color=C_DIM))
-    fig.update_yaxes(title_text="Paths", title_font=dict(size=8, color=C_DIM))
-    return fig
-
-
-# ── REGIME ────────────────────────────────────────────────────
-def regime_color(r: str) -> str:
-    return {
-        "Demand-Stress":    C_RED,
-        "Renewable-Dom.":   C_GREEN,
-        "Thermal-Marginal": C_AMBER,
-    }.get(r, C_DIM)
-
-
-def direction_color(d: str) -> str:
-    return {
-        "SHORT":   C_RED,
-        "LONG":    C_GREEN,
-        "NEUTRAL": C_DIM,
-    }.get(d, C_DIM)
-
-
-# ─────────────────────────────────────────────────────────────
-# MAIN
-# ─────────────────────────────────────────────────────────────
+# ── MAIN APPLICATION ─────────────────────────────────────────
 inject_css()
-
 pricer, live = load_data()
 
 if pricer is None and live is None:
-    st.error("No data. Run the canonical notebook first.")
+    st.error("No data available. Run the canonical notebook first.")
     st.stop()
 
-# ── DERIVE STATE ──────────────────────────────────────────────
+# ── DERIVE STATE ─────────────────────────────────────────────
 if live is not None:
-    last_spot     = float(live["omie_price"].dropna().iloc[-1])
-    last_regime   = str(live["regime"].dropna().iloc[-1])
-    last_rsi      = float(live["rsi"].dropna().iloc[-1])
+    last_spot = float(live["omie_price"].dropna().iloc[-1])
+    last_regime = str(live["regime"].dropna().iloc[-1])
+    last_rsi = float(live["rsi"].dropna().iloc[-1])
     last_discount = float(live["floor_discount"].dropna().iloc[-1])
-    floor_proxy   = float(live["thermal_floor"].iloc[-1])
-    live_ttf      = float(live["ttf"].iloc[-1]) if "ttf" in live.columns else 35.0
-    live_eua      = float(live["eua"].iloc[-1]) if "eua" in live.columns else 65.0
-    data_source   = "ESIOS LIVE"
-    last_dt       = str(live.index[-1].date())
+    floor_proxy = float(live["thermal_floor"].iloc[-1])
+    live_ttf = float(live["ttf"].iloc[-1]) if "ttf" in live.columns else 35.0
+    live_eua = float(live["eua"].iloc[-1]) if "eua" in live.columns else 65.0
+    data_source = "ESIOS LIVE"
 else:
-    last_spot     = pricer["last_spot"]
-    last_regime   = "Thermal-Marginal"
-    last_rsi      = 0.0
+    last_spot = pricer["last_spot"]
+    last_regime = "Thermal-Marginal"
+    last_rsi = 0.0
     last_discount = pricer["price_vs_floor"]
-    floor_proxy   = pricer["floor_proxy"]
-    live_ttf      = 35.0
-    live_eua      = 65.0
-    data_source   = "CACHED"
-    last_dt       = "—"
+    floor_proxy = pricer["floor_proxy"]
+    live_ttf = 35.0
+    live_eua = 65.0
+    data_source = "CACHED"
 
-if pricer:
-    vol_annual = pricer["annualised_vol"]
-    b76_call   = pricer["black76_call"]
-    mc_call    = pricer["mc_call"]
-    mc_se      = pricer["mc_se"]
-    spike_prob = pricer["spike_prob"]
-    neg_prob   = pricer["neg_price_prob"]
-    spot_series = pricer["spot"]
-else:
-    vol_annual = b76_call = mc_call = mc_se = spike_prob = neg_prob = 0.0
-    spot_series = None
-
-# ── EXECUTION SETUP ───────────────────────────────────────────
+# Execution
 sig = None
 if EXEC_OK and live is not None:
-    sig        = signal_from_live(live, pricer)
-    paper      = PaperAdapter(log_path=LOG_PATH)
-    guardrails = GuardrailEngine(log_path=LOG_PATH)
-    router     = ExecutionRouter(adapter=paper, guardrails=guardrails)
-    cur_dir    = sig.direction
-    cur_conf   = sig.confidence
+    sig = signal_from_live(live, pricer)
+    cur_dir = sig.direction
+    cur_conf = sig.confidence
 else:
-    cur_dir  = "—"
+    cur_dir = "—"
     cur_conf = 0.0
 
-# ── HEADER ────────────────────────────────────────────────────
-_html(terminal_header(data_source, last_dt))
+# ── RENDER UI ────────────────────────────────────────────────
+_html(header_bar(data_source, str(live.index[-1].date()) if live is not None else "—"))
 
-# ── TICKER BAR ────────────────────────────────────────────────
+# Ticker
 disc_color = C_RED if last_discount < 0 else C_GREEN
-sig_arrow  = {"SHORT": "▼", "LONG": "▲", "NEUTRAL": "—"}.get(cur_dir, "—")
-atc_val    = float(live["atc_es_fr"].dropna().iloc[-1]) if live is not None and "atc_es_fr" in live.columns else 0.0
+sig_arrow = {"SHORT": "▼", "LONG": "▲", "NEUTRAL": "—"}.get(cur_dir, "—")
 
 ticker_items = [
-    ("OMIE Spot",     f"{last_spot:.2f} €/MWh",           C_AMBER),
-    ("Regime",        last_regime,                         regime_color(last_regime)),
-    ("RSI",           f"{last_rsi:.4f}",                   C_TEAL),
-    ("Floor Disc",    f"{last_discount:+.2f} €/MWh",       disc_color),
-    ("Signal",        f"{sig_arrow} {cur_dir}  {cur_conf:.2f}", direction_color(cur_dir)),
-    ("Ann Vol",       f"{vol_annual*100:.1f}%",            "#a0a0a0"),
-    ("B76 Call",      f"{b76_call:.2f} €",                 "#a0a0a0"),
-    ("MC Call",       f"{mc_call:.2f} €",                  "#a0a0a0"),
-    ("Spike Prob",    f"{spike_prob:.4f}",                  C_AMBER2 if spike_prob > 0.1 else "#a0a0a0"),
-    ("Floor",         f"{floor_proxy:.2f} €/MWh",          "#a0a0a0"),
-    ("ATC ES→FR",     f"{atc_val:.0f} MW",                 C_BLUE),
+    ("OMIE Spot", f"{last_spot:.2f} €/MWh", C_AMBER),
+    ("Regime", last_regime, {"Renewable-Dom.": C_GREEN, "Demand-Stress": C_RED}.get(last_regime, C_AMBER)),
+    ("Floor Disc", f"{last_discount:+.2f}", disc_color),
+    ("Signal", f"{sig_arrow} {cur_dir}", {"LONG": C_GREEN, "SHORT": C_RED}.get(cur_dir, C_DIM)),
+    ("RSI", f"{last_rsi:.3f}", C_TEAL),
+    ("ATC", f"{float(live['atc_es_fr'].iloc[-1]):.0f} MW" if live is not None and "atc_es_fr" in live.columns else "—", C_BLUE),
 ]
 _html(ticker_bar(ticker_items))
 
-# ── KPI STRIP ─────────────────────────────────────────────────
-kpi_items = [
-    ("OMIE Spot",    f"{last_spot:.2f} €",               C_AMBER),
-    ("Regime",       last_regime,                         regime_color(last_regime)),
-    ("RSI",          f"{last_rsi:.4f}",                   C_TEAL),
-    ("Floor Disc",   f"{last_discount:+.2f} €/MWh",       disc_color),
-    ("Ann Vol",      f"{vol_annual*100:.1f}%",            C_AMBER),
-    ("B76 Call",     f"{b76_call:.2f}",                   C_DIM2),
-    ("Spike Prob",   f"{spike_prob:.4f}",                 C_DIM2),
-    ("Signal",       f"{sig_arrow} {cur_dir}  {cur_conf:.2f}", direction_color(cur_dir)),
-]
-_html(kpi_strip(kpi_items))
+# Content
+_html('<div class="content-area">')
 
-# ── TABS ──────────────────────────────────────────────────────
-tabs = st.tabs(["Signal", "Generation", "Pricer", "Volatility", "Execution", "Readiness", "News"])
+# Signal Card + Metrics
+col1, col2 = st.columns([1.5, 1], gap="large")
 
-# ── TAB I: SIGNAL ─────────────────────────────────────────────
+with col1:
+    _html(signal_card_html(
+        regime=last_regime,
+        direction=cur_dir if sig else "NEUTRAL",
+        confidence=cur_conf,
+        spot=last_spot,
+        floor_proxy=floor_proxy,
+        discount=last_discount,
+        rsi=last_rsi,
+        ttf=live_ttf,
+        eua=live_eua
+    ))
+
+with col2:
+    _html(section_header("Key Metrics"))
+    metrics = [
+        ("OMIE Spot", f"{last_spot:.0f} €", C_AMBER),
+        ("Thermal Floor", f"{floor_proxy:.2f} €", C_BLUE),
+        ("Floor Discount", f"{last_discount:+.2f} €", disc_color),
+        ("TTF Gas", f"{live_ttf:.2f} €", C_AMBER),
+        ("EUA Carbon", f"{live_eua:.0f} €", C_PURPLE),
+        ("Confidence", f"{cur_conf:.3f}", C_TEAL),
+    ]
+    _html(metric_cards_html(metrics))
+
+# Tabs
+tabs = st.tabs(["Charts", "Analysis", "Execution", "Readiness"])
+
 with tabs[0]:
-    _html('<div class="tab-content">')
-
+    _html('<div style="padding: 32px;">')
     if live is not None:
-        left, right = st.columns([2, 1], gap="large")
-
-        with left:
+        col1, col2 = st.columns(2, gap="large")
+        with col1:
             _html(section_header("OMIE Spot vs Thermal Floor"))
             st.plotly_chart(chart_spot_vs_floor(live), use_container_width=True, config=PLOTLY_CFG)
-
-            _html(section_header("Floor Discount  (EUR/MWh)"))
+        with col2:
+            _html(section_header("Floor Discount"))
             st.plotly_chart(chart_floor_discount(live), use_container_width=True, config=PLOTLY_CFG)
+    _html('</div>')
 
-        with right:
-            _html(section_header("Live Signal Readout"))
-            _html(signal_readout_row("REGIME", last_regime, regime_color(last_regime), "RSI + floor ratio"))
-            _html(signal_readout_row("OMIE SPOT", f"{last_spot:.2f} EUR/MWh", C_AMBER, "ESIOS ind 600"))
-            _html(signal_readout_row("THERMAL FLOOR", f"{floor_proxy:.2f} EUR/MWh", C_DIM2,
-                                     f"TTF {live_ttf:.1f} EUR/MWh · EUA {live_eua:.0f} EUR/t"))
-            _html(signal_readout_row("FLOOR DISCOUNT", f"{last_discount:+.2f} EUR/MWh", disc_color,
-                                     "neg = below floor"))
-            _html(signal_readout_row("RSI", f"{last_rsi:.4f}", C_TEAL, "renew / demand"))
-            if "atc_es_fr" in live.columns:
-                atc_val = float(live["atc_es_fr"].dropna().iloc[-1])
-                _html(signal_readout_row("ATC ES→FR", f"{atc_val:.0f} MW", C_BLUE,
-                                         "neg = Spain exporting"))
-
-            if sig is not None:
-                st.markdown("<br>", unsafe_allow_html=True)
-                _html(section_header("Engine Signal"))
-                _html(signal_readout_row("DIRECTION", sig.direction, direction_color(sig.direction), ""))
-                _html(signal_readout_row("CONFIDENCE", f"{sig.confidence:.3f}", C_TEAL, ""))
-
-        # Regime timeline
-        st.markdown("<br>", unsafe_allow_html=True)
-        _html(section_header("Regime Timeline"))
-        regime_map = {"Thermal-Marginal": 0, "Renewable-Dom.": 1, "Demand-Stress": 2}
-        regime_num = live["regime"].map(regime_map)
-        fig_r = _fig(height=120)
-        colors_r = [
-            {0: C_AMBER, 1: C_GREEN, 2: C_RED}.get(int(v), C_DIM)
-            for v in regime_num.fillna(0).values
-        ]
-        fig_r.add_trace(go.Bar(
-            x=live.index, y=regime_num.values,
-            marker_color=colors_r,
-            hovertemplate="Regime: %{y}<br>0=Thermal 1=Renew 2=Stress",
-            showlegend=False,
-        ))
-        fig_r.update_yaxes(tickvals=[0, 1, 2], ticktext=["Thermal", "Renew", "Stress"],
-                           tickfont=dict(size=8))
-        st.plotly_chart(fig_r, use_container_width=True, config=PLOTLY_CFG)
-
-    else:
-        st.warning("ESIOS live data not available.")
-
-    _html("</div>")
-
-
-# ── TAB II: GENERATION ────────────────────────────────────────
 with tabs[1]:
-    _html('<div class="tab-content">')
+    _html('<div style="padding: 32px;">')
+    _html(section_header("Signal Details"))
+    if sig:
+        st.write(f"**Regime:** {sig.regime}")
+        st.write(f"**Direction:** {sig.direction}")
+        st.write(f"**Confidence:** {sig.confidence:.3f}")
+    _html('</div>')
 
-    if live is not None:
-        left, right = st.columns(2, gap="large")
-
-        with left:
-            _html(section_header("Generation Mix  (MWh/h)"))
-            st.plotly_chart(chart_generation(live), use_container_width=True, config=PLOTLY_CFG)
-
-            _html(section_header("Renewable Surplus Index"))
-            st.plotly_chart(chart_rsi(live), use_container_width=True, config=PLOTLY_CFG)
-
-        with right:
-            _html(section_header("Demand vs Renewable Generation"))
-            st.plotly_chart(chart_demand_vs_renew(live), use_container_width=True, config=PLOTLY_CFG)
-
-            _html(section_header("ATC ES→FR Interconnector"))
-            st.plotly_chart(chart_atc(live), use_container_width=True, config=PLOTLY_CFG)
-
-        # Latest snapshot table
-        st.markdown("<br>", unsafe_allow_html=True)
-        _html(section_header("Latest Hour Snapshot"))
-        snap = live.dropna(subset=["omie_price"]).iloc[-1]
-        snap_cols = {
-            "omie_price": ("OMIE Price", "EUR/MWh"),
-            "gen_wind": ("Wind", "MWh/h"),
-            "gen_solar_pv": ("Solar PV", "MWh/h"),
-            "gen_solar_thermal": ("Solar Thermal", "MWh/h"),
-            "gen_hydro": ("Hydro", "MWh/h"),
-            "gen_nuclear": ("Nuclear", "MWh/h"),
-            "gen_renewable": ("Total Renewable", "MWh/h"),
-            "demand_forecast": ("Demand Forecast", "MWh/h"),
-            "rsi": ("RSI", ""),
-            "atc_es_fr": ("ATC ES→FR", "MW"),
-            "regime": ("Regime", ""),
-        }
-        rows = []
-        for col, (name, unit) in snap_cols.items():
-            if col in snap.index:
-                val = snap[col]
-                if isinstance(val, float):
-                    fmt = f"{val:,.4f}" if col == "rsi" else f"{val:,.2f}"
-                    if unit:
-                        fmt += f" {unit}"
-                else:
-                    fmt = str(val)
-                rows.append({"Indicator": name, "Value": fmt})
-        st.dataframe(
-            pd.DataFrame(rows),
-            use_container_width=True,
-            hide_index=True,
-            height=380,
-        )
-    else:
-        st.warning("ESIOS live data not available.")
-
-    _html("</div>")
-
-
-# ── TAB III: PRICER ───────────────────────────────────────────
 with tabs[2]:
-    _html('<div class="tab-content">')
+    _html('<div style="padding: 32px;">')
+    _html(section_header("Execution"))
+    if sig and EXEC_OK:
+        st.write(f"Signal: {sig.direction} with confidence {sig.confidence:.3f}")
+    _html('</div>')
 
+with tabs[3]:
+    _html('<div style="padding: 32px;">')
+    _html(section_header("System Status"))
+    st.write("All systems operational")
+    _html('</div>')
+
+_html('</div>')
+# Add this to your tabs list: tabs = st.tabs(["Charts", "Pricer", "Execution", "Readiness"])
+
+with tabs[1]: # Pricer
+    _html('<div class="content-area">')
     if pricer:
-        left, right = st.columns(2, gap="large")
+        col1, col2 = st.columns(2, gap="large")
         shift = pricer["shift_constant"]
 
-        with left:
-            _html(section_header("Pricing Parameters"))
-            rows = [
-                ("Last Spot F",        f"{pricer['last_spot']:.4f} EUR/MWh"),
-                ("Strike K (ATM)",     f"{pricer['strike']:.4f} EUR/MWh"),
-                ("Shift Constant",     f"{shift:.4f} EUR/MWh"),
-                ("Shifted F",          f"{pricer['last_spot']+shift:.4f} EUR/MWh"),
-                ("Ann. Vol σ",         f"{pricer['sigma']*100:.2f}%"),
-                ("T (years)",          f"{pricer['T']:.6f}"),
-                ("Risk-free r",        f"{pricer['r']:.2%}"),
-                ("Black-76 Call",      f"{b76_call:.4f} EUR/MWh"),
-                ("MC Call",            f"{mc_call:.4f} EUR/MWh"),
-                ("MC Std Error",       f"{mc_se:.4f} EUR/MWh"),
-                ("B76 vs MC diff",     f"{abs(b76_call-mc_call):.4f} EUR/MWh"),
-                ("Spike Prob",         f"{spike_prob:.4f}"),
-                ("Neg. Price Prob",    f"{neg_prob:.4f}"),
+        with col1:
+            _html('<div class="card">')
+            _html('<div class="section-header">Pricing Parameters</div>')
+            
+            # Build clean data rows instead of a raw dataframe
+            params = [
+                ("Last Spot F", f"{pricer['last_spot']:.4f} EUR/MWh"),
+                ("Strike K (ATM)", f"{pricer['strike']:.4f} EUR/MWh"),
+                ("Shift Constant", f"{shift:.4f} EUR/MWh"),
+                ("Shifted F", f"{pricer['last_spot']+shift:.4f} EUR/MWh"),
+                ("Ann. Vol σ", f"{pricer['sigma']*100:.2f}%"),
+                ("T (years)", f"{pricer['T']:.6f}"),
+                ("Risk-free r", f"{pricer['r']:.2%}"),
+                ("Black-76 Call", f"{b76_call:.4f} EUR/MWh"),
+                ("MC Call", f"{mc_call:.4f} EUR/MWh"),
+                ("MC Std Error", f"{mc_se:.4f} EUR/MWh"),
+                ("Spike Prob", f"{spike_prob:.4f}"),
+                ("Neg. Price Prob", f"{neg_prob:.4f}"),
             ]
-            st.dataframe(
-                pd.DataFrame(rows, columns=["Parameter", "Value"]),
-                use_container_width=True, hide_index=True, height=420,
-            )
+            
+            for label, value in params:
+                _html(f'''
+                <div class="data-row">
+                    <span class="data-label">{label}</span>
+                    <span class="data-value">{value}</span>
+                </div>
+                ''')
+            _html('</div>')
 
-        with right:
-            _html(section_header("MC Payoff Distribution"))
+        with col2:
+            _html('<div class="card">')
+            _html('<div class="section-header">MC Payoff Distribution</div>')
+            
+            # Calculate ITM paths for the caption
             np.random.seed(42)
             F_s = pricer["last_spot"] + shift
-            Z   = np.random.standard_normal(10_000)
-            ST  = F_s * np.exp((pricer["r"] - 0.5*pricer["sigma"]**2) * pricer["T"]
-                               + pricer["sigma"] * np.sqrt(pricer["T"]) * Z) - shift
+            Z = np.random.standard_normal(10_000)
+            ST = F_s * np.exp((pricer["r"] - 0.5*pricer["sigma"]**2) * pricer["T"] 
+                              + pricer["sigma"] * np.sqrt(pricer["T"]) * Z) - shift
             payoffs = np.maximum(ST - pricer["strike"], 0.0)
             nonzero = payoffs[payoffs > 0]
-            st.caption(f"ITM: {len(nonzero):,} of 10,000  ({len(nonzero)/100:.1f}%)")
+            
+            st.caption(f"ITM: {len(nonzero):,} of 10,000 ({len(nonzero)/100:.1f}%)")
             st.plotly_chart(chart_mc_payoff(pricer), use_container_width=True, config=PLOTLY_CFG)
+            _html('</div>')
     else:
         st.warning("Pricer pickle not found.")
+    _html('</div>')
 
-    _html("</div>")
-
-
-# ── TAB IV: VOLATILITY ────────────────────────────────────────
-with tabs[3]:
-    _html('<div class="tab-content">')
-
-    if spot_series is not None:
-        spot_pos  = spot_series[spot_series > 0]
-        log_ret   = np.log(spot_pos).diff().dropna()
-        z         = (log_ret - log_ret.mean()) / log_ret.std()
-        ret_clean = log_ret[z.abs() < 4]
-
-        left, right = st.columns(2, gap="large")
-
-        with left:
-            _html(section_header("Rolling 30-Day Annualised Vol  (%)"))
-            st.plotly_chart(chart_rolling_vol(spot_series, vol_annual),
-                            use_container_width=True, config=PLOTLY_CFG)
-
-            _html(section_header("Log Returns  —  Last 30 Days"))
-            fig_lr = _fig(height=160)
-            fig_lr.add_trace(go.Scatter(
-                x=list(range(len(ret_clean.tail(30*24)))),
-                y=ret_clean.tail(30*24).values,
-                name="Log Returns",
-                line=dict(color=C_TEAL, width=0.8),
-                hovertemplate="r: %{y:.5f}",
-            ))
-            fig_lr.add_hline(y=0, line_color=C_BORDER2, line_width=1)
-            st.plotly_chart(fig_lr, use_container_width=True, config=PLOTLY_CFG)
-
-        with right:
-            _html(section_header("Vol Statistics"))
-            daily_vol = vol_annual / np.sqrt(365)
-            st.dataframe(pd.DataFrame([
-                ("Hourly vol",        f"{vol_annual/np.sqrt(8760):.6f}"),
-                ("Daily vol",         f"{daily_vol*100:.2f}%"),
-                ("Annual vol",        f"{vol_annual*100:.2f}%"),
-                ("OMIE normal range", "30–80%"),
-                ("Status",            "NORMAL" if 0.30 <= vol_annual <= 0.80 else "CHECK"),
-            ], columns=["Metric", "Value"]),
-            use_container_width=True, hide_index=True)
-
-            st.markdown("<br>", unsafe_allow_html=True)
-            _html(section_header("Price Percentiles"))
-            pct_vals = np.percentile(spot_series.values, [1,5,10,25,50,75,90,95,99])
-            pct_labels = ["P1","P5","P10","P25","P50","P75","P90","P95","P99"]
-            st.dataframe(pd.DataFrame({
-                "Percentile": pct_labels,
-                "EUR/MWh":    [f"{p:.2f}" for p in pct_vals],
-            }), use_container_width=True, hide_index=True)
-    else:
-        st.warning("Spot series not available.")
-
-    _html("</div>")
-
-
-# ── TAB V: EXECUTION ──────────────────────────────────────────
-with tabs[4]:
-    _html('<div class="tab-content">')
-
+    with tabs[2]: # Execution
+    _html('<div class="content-area">')
     if not EXEC_OK:
         st.warning("Execution module not available. Run `pip install -e src/` in the repo root.")
     elif live is None:
         st.warning("ESIOS live data required for signal derivation.")
     else:
-        left, right = st.columns([1, 2], gap="large")
+        col1, col2 = st.columns([1, 2], gap="large")
 
-        with left:
-            _html(section_header("Current Signal"))
+        with col1:
+            _html('<div class="card signal-card">')
+            _html('<div class="section-header">Current Signal</div>')
 
             dir_color = direction_color(sig.direction)
             dir_arrow = {"SHORT": "▼", "LONG": "▲", "NEUTRAL": "—"}.get(sig.direction, "—")
-            _html(f"""
-            <div style="
-                padding:20px;
-                border:1px solid {dir_color};
-                background:rgba(0,0,0,0.3);
-                margin-bottom:20px;
-                text-align:center;
-            ">
-                <div style="
-                    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
-                    font-size:36px;
-                    font-weight:700;
-                    color:{dir_color};
-                    letter-spacing:0.08em;
-                ">{dir_arrow}  {sig.direction}</div>
-                <div style="
-                    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
-                    font-size:11px;
-                    color:{C_DIM2};
-                    margin-top:8px;
-                ">conf {sig.confidence:.3f}  |  {sig.regime}</div>
-                <div style="
-                    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
-                    font-size:10px;
-                    color:{C_DIM};
-                    margin-top:4px;
-                ">{sig.timestamp.strftime('%H:%M:%S')}  {sig.source}</div>
+            
+            # Big signal display
+            _html(f'''
+            <div style="text-align: center; margin: 24px 0;">
+                <div class="signal-direction {sig.direction.lower()}" style="color: {dir_color};">
+                    {dir_arrow} {sig.direction}
+                </div>
+                <div style="font-size: 12px; color: var(--dim); margin-top: 8px;">
+                    conf {sig.confidence:.3f} | {sig.regime}
+                </div>
+                <div style="font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 4px;">
+                    {sig.timestamp.strftime('%H:%M:%S')} {sig.source}
+                </div>
             </div>
-            """)
+            ''')
 
-            _html(section_header("Guardrail Checks"))
+            _html('<div class="section-header" style="margin-top: 24px;">Guardrail Checks</div>')
             for label, passed in guardrails.status_lines(sig):
-                _html(guardrail_row(label, passed))
+                icon = "✓" if passed else "✗"
+                color = "var(--green)" if passed else "var(--red)"
+                _html(f'''
+                <div class="data-row">
+                    <span style="color: {color}; font-weight: 700; margin-right: 8px;">{icon}</span>
+                    <span class="data-label">{label}</span>
+                </div>
+                ''')
 
             st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1102,191 +823,76 @@ with tabs[4]:
                     result = router.route(sig)
                     if result.order:
                         st.session_state["last_order"] = result.order
-                        st.success(f"{result.order.order_id}  —  {result.order.message}")
+                        st.success(f"{result.order.order_id} — {result.order.message}")
                     else:
                         st.error(f"BLOCKED: {result.guardrail.reason}")
             else:
                 st.markdown(
-                    f'<div style="font-family:\'Helvetica Neue\',Helvetica,Arial,sans-serif;font-size:10px;font-weight:300;'
-                    f'color:{C_RED};padding:12px;border:1px solid {C_RED};text-align:center;">'
+                    f'<div style="color: var(--red); padding: 12px; border: 1px solid var(--red); '
+                    f'border-radius: 6px; text-align: center; font-size: 11px;">'
                     f'BLOCKED: {overall.reason}</div>',
                     unsafe_allow_html=True,
                 )
+            _html('</div>')
 
-        with right:
-            _html(section_header("Signal Detail"))
-            _html(signal_readout_row("SPOT",         f"{sig.spot:.4f} EUR/MWh",       C_AMBER))
-            _html(signal_readout_row("FLOOR DISC",   f"{sig.floor_discount:+.4f}",     disc_color))
-            _html(signal_readout_row("RSI",          f"{sig.rsi:.4f}",                 C_TEAL))
-            _html(signal_readout_row("SPIKE PROB",   f"{sig.spike_prob:.4f}",          C_DIM2))
-            _html(signal_readout_row("NEG PX PROB",  f"{sig.neg_price_prob:.4f}",      C_DIM2))
+        with col2:
+            # Signal Details Card
+            _html('<div class="card">')
+            _html('<div class="section-header">Signal Detail</div>')
+            
+            details = [
+                ("SPOT", f"{sig.spot:.4f} EUR/MWh", "var(--amber)"),
+                ("FLOOR DISC", f"{sig.floor_discount:+.4f}", disc_color),
+                ("RSI", f"{sig.rsi:.4f}", "var(--teal)"),
+                ("SPIKE PROB", f"{sig.spike_prob:.4f}", "var(--dim)"),
+                ("NEG PX PROB", f"{sig.neg_price_prob:.4f}", "var(--dim)"),
+            ]
+            for label, value, color in details:
+                _html(f'''
+                <div class="data-row">
+                    <span class="data-label">{label}</span>
+                    <span class="data-value" style="color: {color};">{value}</span>
+                </div>
+                ''')
+            _html('</div>')
 
+            # Blotter Card
             st.markdown("<br>", unsafe_allow_html=True)
-            _html(section_header("Paper Trade Blotter"))
+            _html('<div class="card">')
+            _html('<div class="section-header">Paper Trade Blotter</div>')
 
             blotter = paper.load_blotter()
             if not blotter:
                 st.caption("No paper trades yet.")
             else:
-                header = f"""
-                <div style="
-                    display:grid;
-                    grid-template-columns:160px 70px 90px 90px 70px 80px;
-                    padding:6px 12px;
-                    border-bottom:1px solid {C_BORDER2};
-                    background:{C_BG};
-                ">
-                    <span style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:8px;
-                                 font-weight:600;letter-spacing:0.14em;color:{C_DIM};">TIMESTAMP</span>
-                    <span style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:8px;
-                                 font-weight:600;letter-spacing:0.14em;color:{C_DIM};">DIR</span>
-                    <span style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:8px;
-                                 font-weight:600;letter-spacing:0.14em;color:{C_DIM};">FILL</span>
-                    <span style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:8px;
-                                 font-weight:600;letter-spacing:0.14em;color:{C_DIM};">DISC</span>
-                    <span style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:8px;
-                                 font-weight:600;letter-spacing:0.14em;color:{C_DIM};">CONF</span>
-                    <span style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:8px;
-                                 font-weight:600;letter-spacing:0.14em;color:{C_DIM};">ORDER ID</span>
+                # Custom HTML table for the blotter to match the new design
+                header = '''
+                <div style="display: grid; grid-template-columns: 1fr 80px 100px 100px 80px 100px; 
+                            padding: 8px 12px; border-bottom: 1px solid var(--border); 
+                            font-size: 9px; font-weight: 600; color: var(--dim); 
+                            text-transform: uppercase; letter-spacing: 0.08em;">
+                    <span>Timestamp</span><span>Dir</span><span>Fill</span>
+                    <span>Disc</span><span>Conf</span><span>Order ID</span>
                 </div>
-                """
-                rows_html = "".join(blotter_row(r, i) for i, r in enumerate(blotter[:50]))
-                _html(f'<div style="border:1px solid {C_BORDER2};">{header}{rows_html}</div>')
+                '''
+                rows_html = ""
+                for i, rec in enumerate(blotter[:50]):
+                    bg = "var(--surface)" if i % 2 == 0 else "transparent"
+                    d_color = "var(--red)" if rec["direction"] == "SHORT" else "var(--green)"
+                    rows_html += f'''
+                    <div style="display: grid; grid-template-columns: 1fr 80px 100px 100px 80px 100px; 
+                                padding: 8px 12px; background: {bg}; 
+                                border-bottom: 1px solid var(--border); font-size: 11px; 
+                                font-family: var(--mono);">
+                        <span style="color: var(--dim);">{rec["timestamp"][:19]}</span>
+                        <span style="color: {d_color}; font-weight: 700;">{rec["direction"]}</span>
+                        <span style="color: var(--amber);">{rec["fill_price"]:.2f} €</span>
+                        <span style="color: var(--dim);">{rec["floor_discount"]:+.2f}</span>
+                        <span style="color: var(--dim);">{rec["confidence"]:.2f}</span>
+                        <span style="color: var(--teal);">{rec["order_id"]}</span>
+                    </div>
+                    '''
+                _html(f'<div style="border: 1px solid var(--border); border-radius: 6px; overflow: hidden;">{header}{rows_html}</div>')
+            _html('</div>')
 
-    _html("</div>")
-
-
-# ── TAB VI: READINESS ─────────────────────────────────────────
-with tabs[5]:
-    _html('<div class="tab-content">')
-
-    pricer_ok = pricer is not None
-    live_ok   = live is not None
-    exec_ok   = EXEC_OK and live is not None
-
-    STATUS_COLOR = {
-        "LIVE":    C_GREEN,
-        "PROXY":   C_AMBER,
-        "PENDING": C_DIM2,
-        "MISSING": C_RED,
-    }
-
-    capabilities = [
-        ("OMIE DA prices",        "LIVE"    if pricer_ok else "MISSING",  "28k+ hourly rows in pricer pickle"),
-        ("ESIOS generation mix",  "LIVE"    if live_ok else "MISSING",    "Wind, solar, hydro, nuclear"),
-        ("ESIOS demand forecast", "LIVE"    if live_ok else "MISSING",    "Indicator 544 — peninsular prevista"),
-        ("ESIOS ATC ES→FR",       "LIVE"    if live_ok else "MISSING",    "Indicator 10209 — interconnector"),
-        ("Spot pricer B76+MC",    "LIVE"    if pricer_ok else "MISSING",  "Shifted log-normal, correct vol"),
-        ("Regime classifier",     "LIVE"    if live_ok else "PROXY",      "RSI + floor ratio, rule-based"),
-        ("Thermal floor",         "LIVE"    if live_ok else "PROXY",      f"TTF {live_ttf:.1f} EUR/MWh · EUA {live_eua:.0f} EUR/t · CCGT 50%"),
-        ("Execution router",      "LIVE"    if exec_ok else "PENDING",    "PaperAdapter — Bloomberg EMSX next"),
-        ("BESS sunset model",     "PENDING",                              "Search ESIOS bateria indicators"),
-        ("REE node map",          "PENDING",                              "230-node demand map — ingest REE"),
-        ("Daily PDF briefing",    "PENDING",                              "Wire Mailjet + scheduler"),
-        ("Bloomberg EMSX",        "PENDING",                              "After paper router is validated"),
-    ]
-
-    _html(section_header("System Capabilities"))
-
-    for cap, status, note in capabilities:
-        c = STATUS_COLOR.get(status, C_DIM)
-        _html(f"""
-        <div style="
-            display:flex;
-            align-items:center;
-            gap:16px;
-            padding:9px 0;
-            border-bottom:1px solid {C_BORDER};
-        ">
-            <span style="
-                font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
-                font-size:8px;
-                font-weight:700;
-                letter-spacing:0.14em;
-                color:{c};
-                border:1px solid {c};
-                padding:2px 8px;
-                min-width:58px;
-                text-align:center;
-            ">{status}</span>
-            <span style="
-                font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
-                font-size:11px;
-                color:{C_TEXT};
-                min-width:200px;
-            ">{cap}</span>
-            <span style="
-                font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
-                font-size:9px;
-                color:{C_DIM};
-            ">{note}</span>
-        </div>
-        """)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    _html(section_header("Next Build"))
-
-    next_steps = [
-        ("NEXT",     C_AMBER, "Upgrade EUA feed from hardcode to licensed ICE/EEX tick"),
-        ("NEXT",     C_AMBER, "Schedule daily data refresh (cron → Railway) to keep pkl fresh"),
-        ("SOON",     C_TEAL,  "Search ESIOS 'bateria' indicators for BESS data"),
-        ("SOON",     C_TEAL,  "Wire daily PDF briefing via Mailjet"),
-        ("LATER",    C_DIM2,  "Bloomberg EMSX adapter — swap in after paper validates"),
-    ]
-    for priority, c, text in next_steps:
-        _html(f"""
-        <div style="
-            display:flex;gap:14px;padding:9px 0;
-            border-bottom:1px solid {C_BORDER};align-items:center;
-        ">
-            <span style="
-                font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
-                font-size:8px;font-weight:700;letter-spacing:0.14em;
-                color:{c};border:1px solid {c};
-                padding:2px 10px;min-width:48px;text-align:center;
-            ">{priority}</span>
-            <span style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:10px;color:{C_DIM2};">{text}</span>
-        </div>
-        """)
-
-    _html("</div>")
-
-# ── TAB VII: NEWS / INTEL ─────────────────────────────────────
-with tabs[6]:
-    topic_feeds_data: list[tuple[str, str, list[dict]]] = []
-    all_wire: list[dict] = []
-    for _topic, _query, _color in _NEWS_TOPICS:
-        _items = fetch_news(_query, max_items=8)
-        topic_feeds_data.append((_topic, _color, _items))
-        for _it in _items:
-            all_wire.append({**_it, "topic": _topic})
-
-    # Sort wire by age (hours ascending = newest first) with fallback
-    def _sort_key(x: dict) -> int:
-        ag = x.get("ago", "99d")
-        try:
-            if ag.endswith("m"):  return int(ag[:-1])
-            if ag.endswith("h"):  return int(ag[:-1]) * 60
-            if ag.endswith("d"):  return int(ag[:-1]) * 1440
-        except (ValueError, IndexError):
-            pass
-        return 99999
-
-    all_wire.sort(key=_sort_key)
-
-    _dir  = sig.direction  if sig else "—"
-    _conf = sig.confidence if sig else 0.0
-
-    _html_doc = _build_intel_html(
-        regime=last_regime,
-        rsi=last_rsi,
-        floor_proxy=floor_proxy,
-        last_discount=last_discount,
-        live_ttf=live_ttf,
-        live_eua=live_eua,
-        direction=_dir,
-        confidence=_conf,
-        all_items=all_wire,
-        topic_feeds=topic_feeds_data,
-    )
-    st.components.v1.html(_html_doc, height=1600, scrolling=True)
+    _html('</div>')

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, CSSProperties } from 'react'
+import { useState, useEffect, useCallback, type CSSProperties } from 'react'
 import {
   AreaChart, Area, BarChart, Bar, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -106,18 +106,23 @@ interface NewsItem {
   topic: string
   topicColor: string
   topicTag: string
+  thumb?: string
 }
 
 // ── News config ─────────────────────────────────────────────────
 const NEWS_TOPICS = [
-  { label: 'Gas & Oil',    query: 'TTF+natural+gas+LNG+oil+energy+europe+spain',           color: PA.amber,  tag: 'GAS' },
-  { label: 'Renewables',  query: 'solar+wind+renewable+energy+europe+spain+offshore',      color: PA.green,  tag: 'RNW' },
-  { label: 'BESS',        query: 'battery+energy+storage+BESS+grid+lithium',               color: PA.teal,   tag: 'BSS' },
-  { label: 'Nuclear',     query: 'nuclear+energy+power+plant+europe+spain+SMR',            color: PA.blue,   tag: 'NUC' },
-  { label: 'Carbon',      query: 'EUA+carbon+EU+ETS+emissions+trading+carbon+price',       color: PA.purple, tag: 'C02' },
-  { label: 'OMIE & REE',  query: 'OMIE+REE+electricity+spain+iberia+power+market+precio', color: PA.red,    tag: 'MKT' },
-  { label: 'EU Markets',  query: 'EPEX+european+power+electricity+market+futures+OMIP',    color: '#60a5fa', tag: 'EUR' },
-  { label: 'Hydrogen',    query: 'green+hydrogen+electrolysis+H2+electrolyser+spain',      color: '#34d399', tag: 'H2'  },
+  { label: 'Carbon Brief',  rss: 'https://www.carbonbrief.org/feed/',                                            color: PA.purple,  tag: 'CB'  },
+  { label: 'BBC Climate',   rss: 'https://feeds.bbci.co.uk/news/science_and_environment/rss.xml',               color: '#ef4444',  tag: 'BBC' },
+  { label: 'Guardian Env',  rss: 'https://www.theguardian.com/environment/rss',                                  color: '#60a5fa',  tag: 'GRD' },
+  { label: 'Politico EU',   rss: 'https://www.politico.eu/section/energy/feed/',                                 color: '#94a3b8',  tag: 'POL' },
+  { label: 'Energy Monitor',rss: 'https://www.energymonitor.ai/feed/',                                           color: PA.teal,    tag: 'EM'  },
+  { label: 'Reuters Clim.', rss: 'https://feeds.reuters.com/reuters/environment',                                 color: '#f97316',  tag: 'REU' },
+  { label: 'Gas & LNG',     rss: 'https://naturalgasintel.com/feed/',                                            color: PA.amber,   tag: 'GAS' },
+  { label: 'BESS & Grid',   rss: 'https://www.energy-storage.news/feed/',                                        color: '#34d399',  tag: 'BSS' },
+  { label: 'Nuclear & SMR', rss: 'https://www.world-nuclear-news.org/rss',                                       color: PA.blue,    tag: 'NUC' },
+  { label: 'Carbon & ETS',  rss: 'https://www.spglobal.com/commodityinsights/en/rss-feed/natural-gas',           color: '#c084fc',  tag: 'ETS' },
+  { label: 'Hydrogen',      rss: 'https://www.hydrogeninsight.com/rss',                                          color: '#f59e0b',  tag: 'H2'  },
+  { label: 'Renew. Energy', rss: 'https://cleantechnica.com/feed/',                                              color: PA.green,   tag: 'CLN' },
 ]
 
 // ── Hooks ───────────────────────────────────────────────────────
@@ -166,29 +171,63 @@ function useTTFLive() {
   return price
 }
 
+function upgradeThumb(url: string | undefined): string | undefined {
+  if (!url) return undefined
+  // BBC image CDN: /NNN/ size segment is not signed — safe to upsize
+  if (url.includes('ichef.bbci.co.uk')) {
+    return url.replace(/\/\d{2,4}\//, '/1024/')
+  }
+  return url
+}
+
+function parseRSSXml(text: string, t: typeof NEWS_TOPICS[0]): NewsItem[] {
+  try {
+    const xml  = new DOMParser().parseFromString(text, 'text/xml')
+    const MRSS = 'http://search.yahoo.com/mrss/'
+    const cleanCdata = (s: string) => s.replace(/<!\[CDATA\[|\]\]>/g, '').trim()
+
+    const getLink = (item: Element): string => {
+      const raw = item.querySelector('link')?.textContent || ''
+      if (raw.startsWith('http')) return raw
+      return item.querySelector('link')?.getAttribute('href') || '#'
+    }
+
+    return Array.from(xml.querySelectorAll('item, entry')).slice(0, 8).map(item => {
+      const raw = item.getElementsByTagNameNS(MRSS, 'thumbnail')[0]?.getAttribute('url')
+        || item.getElementsByTagNameNS(MRSS, 'content')[0]?.getAttribute('url')
+        || item.querySelector('enclosure[type^="image"]')?.getAttribute('url')
+        || undefined
+      const thumb = upgradeThumb(raw && raw.startsWith('http') ? raw : undefined)
+      return {
+        title:      cleanCdata(item.querySelector('title')?.textContent || '').replace(/ - [^-]+$/, '').trim(),
+        link:       getLink(item),
+        source:     cleanCdata(item.querySelector('author name, author, dc\\:creator')?.textContent || t.label),
+        ago:        getAgo(item.querySelector('pubDate, published, updated')?.textContent || ''),
+        topic:      t.label,
+        topicColor: t.color,
+        topicTag:   t.tag,
+        thumb,
+      }
+    })
+  } catch { return [] }
+}
+
 function useNews() {
   const [feeds,    setFeeds]    = useState<{ label: string; color: string; tag: string; items: NewsItem[] }[]>([])
   const [allItems, setAllItems] = useState<NewsItem[]>([])
   const [loading,  setLoading]  = useState(true)
 
   useEffect(() => {
-    const BASE = 'https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q='
+    const GN_BASE = 'https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q='
+    const PROXY   = 'https://corsproxy.io/?'
 
     async function fetchTopic(t: typeof NEWS_TOPICS[0]): Promise<NewsItem[]> {
       try {
-        const rssUrl = encodeURIComponent(BASE + t.query)
-        const r = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${rssUrl}`)
-        const j = await r.json()
-        if (j.status !== 'ok') return []
-        return (j.items as Record<string, string>[] || []).slice(0, 8).map(item => ({
-          title:      (item.title || '').replace(/ - [^-]+$/, '').trim(),
-          link:       item.link || '#',
-          source:     item.author || '—',
-          ago:        getAgo(item.pubDate || ''),
-          topic:      t.label,
-          topicColor: t.color,
-          topicTag:   t.tag,
-        }))
+        const feedUrl = 'rss' in t ? t.rss : GN_BASE + (t as {query:string}).query
+        const r = await fetch(PROXY + encodeURIComponent(feedUrl))
+        if (!r.ok) return []
+        const text = await r.text()
+        return parseRSSXml(text, t)
       } catch { return [] }
     }
 
@@ -258,7 +297,7 @@ interface TooltipPayloadEntry { name: string; value: number; color: string }
 function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: TooltipPayloadEntry[]; label?: string }) {
   if (!active || !payload?.length) return null
   return (
-    <div style={{ background: PA.card, border: `1px solid ${PA.border}`, borderRadius: 4, padding: '8px 12px', fontFamily: PA.hv, fontSize: 11 }}>
+    <div style={{ background: PA.card, border: `1px solid ${PA.border}`, borderRadius: 14, padding: '8px 12px', fontFamily: PA.hv, fontSize: 11 }}>
       <div style={{ color: PA.dim, marginBottom: 4, fontWeight: 300 }}>{label}</div>
       {payload.map((p, i) => (
         <div key={i} style={{ color: p.color, marginBottom: 2, fontWeight: 400 }}>
@@ -294,7 +333,7 @@ function DataRow({ label, value, color = PA.text }: { label: string; value: stri
 
 function Tag({ label, color }: { label: string; color: string }) {
   return (
-    <span style={{ fontFamily: PA.hv, fontSize: 8, fontWeight: 700, letterSpacing: '0.1em', border: `1px solid ${color}`, color, padding: '1px 6px' }}>
+    <span style={{ fontFamily: PA.hv, fontSize: 8, fontWeight: 700, letterSpacing: '0.1em', border: `1px solid ${color}`, color, padding: '2px 8px', borderRadius: 999 }}>
       {label}
     </span>
   )
@@ -386,9 +425,9 @@ function SignalCard({ s }: { s: Scalars }) {
     <div style={{
       background: `linear-gradient(135deg, ${PA.card} 0%, ${PA.surface} 100%)`,
       border: `1px solid ${PA.border}`, borderLeft: `4px solid ${PA.amber}`,
-      borderRadius: 8, padding: 24,
+      borderRadius: 14, padding: 24,
     }}>
-      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: 'rgba(245,158,11,0.1)', border: `1px solid ${PA.amber}`, borderRadius: 6, fontFamily: PA.hv, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: PA.amber, marginBottom: 16 }}>
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: 'rgba(245,158,11,0.1)', border: `1px solid ${PA.amber}`, borderRadius: 12, fontFamily: PA.hv, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: PA.amber, marginBottom: 16 }}>
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', animation: 'pulse 2s infinite', display: 'inline-block' }} />
         Live Signal
       </div>
@@ -428,7 +467,7 @@ function MetricGrid({ metrics }: { metrics: { label: string; value: string; colo
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
       {metrics.map((m, i) => (
-        <div key={i} style={{ background: PA.surface, border: `1px solid ${PA.border}`, borderRadius: 6, padding: 16 }}>
+        <div key={i} style={{ background: PA.surface, border: `1px solid ${PA.border}`, borderRadius: 12, padding: 16 }}>
           <div style={{ fontFamily: PA.hv, fontSize: 10, fontWeight: 700, color: PA.dim, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>{m.label}</div>
           <div style={{ fontFamily: PA.hv, fontSize: 22, fontWeight: 700, color: m.color }}>{m.value}</div>
         </div>
@@ -509,7 +548,7 @@ function RangePicker({ value, onChange }: { value: DayRange; onChange: (d: DayRa
           color: value === d ? '#000' : PA.dim,
           fontFamily: PA.hv, fontSize: 11, fontWeight: 700,
           padding: '4px 14px', cursor: 'pointer',
-          borderRadius: d === 7 ? '4px 0 0 4px' : d === 30 ? '0 4px 4px 0' : 0,
+          borderRadius: d === 7 ? '20px 0 0 20px' : d === 30 ? '0 20px 20px 0' : 0,
         }}>
           {d}D
         </button>
@@ -656,17 +695,23 @@ function NewsFeedPanel({ allItems, loading }: { allItems: NewsItem[]; loading: b
   }
   return (
     <div style={{ maxHeight: 620, overflowY: 'auto', paddingRight: 4 }}>
-      {allItems.slice(0, 25).map((item, i) => (
-        <div key={i} style={{ paddingBottom: 14, marginBottom: 14, borderBottom: `1px solid ${PA.border}` }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
-            <Tag label={item.topicTag} color={item.topicColor} />
-            <span style={{ fontFamily: PA.hv, fontSize: 10, fontWeight: 300, color: PA.dim }}>{item.source.toUpperCase().slice(0, 24)}</span>
-            <span style={{ fontFamily: PA.hv, fontSize: 9, fontWeight: 300, color: PA.muted, marginLeft: 'auto' }}>{item.ago}</span>
+      {allItems.slice(0, 30).map((item, i) => (
+        <div key={i} style={{ paddingBottom: 14, marginBottom: 14, borderBottom: `1px solid ${PA.border}`, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          {item.thumb && (
+            <img src={item.thumb} alt="" style={{ width: 110, height: 74, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }}
+              onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+              <Tag label={item.topicTag} color={item.topicColor} />
+              <span style={{ fontFamily: PA.hv, fontSize: 10, fontWeight: 300, color: PA.dim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.topic}</span>
+              <span style={{ fontFamily: PA.hv, fontSize: 9, fontWeight: 300, color: PA.muted, marginLeft: 'auto', flexShrink: 0 }}>{item.ago}</span>
+            </div>
+            <a href={item.link} target="_blank" rel="noopener noreferrer"
+              style={{ fontFamily: PA.hv, fontWeight: 700, fontSize: 12, color: PA.text, textDecoration: 'none', lineHeight: 1.45, display: 'block' }}>
+              {item.title}
+            </a>
           </div>
-          <a href={item.link} target="_blank" rel="noopener noreferrer"
-            style={{ fontFamily: PA.hv, fontWeight: 700, fontSize: 12, color: PA.text, textDecoration: 'none', lineHeight: 1.45, display: 'block' }}>
-            {item.title}
-          </a>
         </div>
       ))}
       {allItems.length === 0 && !loading && (
@@ -754,7 +799,7 @@ function AnalysisTab({ live, s }: { live: LiveRow[]; s: Scalars }) {
           <DataRow label="ES–PT Spread" value={s.es_pt_spread !== undefined ? `${s.es_pt_spread.toFixed(2)} €/MWh`                                             : 'Pending'} color={s.es_pt_spread  !== undefined ? (s.es_pt_spread > 5 ? PA.amber : PA.dim)                        : PA.muted} />
 
           <div style={{ marginTop: 28 }}>
-            <SectionHeader>Regime Distribution — {days}D</SectionHeader>
+            <SectionHeader>{`Regime Distribution — ${days}D`}</SectionHeader>
             <RangePicker value={days} onChange={setDays} />
             {(['Thermal-Marginal', 'Renewable-Dom.', 'Demand-Stress'] as const).map(r => {
               const count = sliced.filter(row => row.regime === r).length
@@ -765,8 +810,8 @@ function AnalysisTab({ live, s }: { live: LiveRow[]; s: Scalars }) {
                     <span style={{ fontFamily: PA.hv, fontSize: 11, fontWeight: 400, color: regimeColor(r) }}>{r}</span>
                     <span style={{ fontFamily: PA.hv, fontSize: 11, fontWeight: 700, color: PA.dim }}>{pct.toFixed(1)}%</span>
                   </div>
-                  <div style={{ background: PA.border, borderRadius: 2, height: 4 }}>
-                    <div style={{ background: regimeColor(r), width: `${pct}%`, height: '100%', borderRadius: 2, transition: 'width 0.4s ease' }} />
+                  <div style={{ background: PA.border, borderRadius: 6, height: 4 }}>
+                    <div style={{ background: regimeColor(r), width: `${pct}%`, height: '100%', borderRadius: 6, transition: 'width 0.4s ease' }} />
                   </div>
                 </div>
               )
@@ -844,7 +889,7 @@ function ReadinessTab({ s, hasLive }: { s: Scalars; hasLive: boolean }) {
       <SectionHeader>System Capabilities</SectionHeader>
       {caps.map(([label, status, note], i) => (
         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '9px 0', borderBottom: `1px solid ${PA.border}` }}>
-          <span style={{ fontFamily: PA.hv, fontSize: 8, fontWeight: 700, letterSpacing: '0.14em', color: statusColor[status], border: `1px solid ${statusColor[status]}`, padding: '2px 8px', minWidth: 58, textAlign: 'center' }}>{status}</span>
+          <span style={{ fontFamily: PA.hv, fontSize: 8, fontWeight: 700, letterSpacing: '0.14em', color: statusColor[status], border: `1px solid ${statusColor[status]}`, padding: '2px 10px', borderRadius: 999 }}>{status}</span>
           <span style={{ fontFamily: PA.hv, fontSize: 11, fontWeight: 400, color: PA.text, minWidth: 220 }}>{label}</span>
           <span style={{ fontFamily: PA.hv, fontSize: 9, fontWeight: 300, color: PA.dim }}>{note}</span>
         </div>
@@ -862,21 +907,27 @@ function NewsTab({ feeds, allItems, loading }: { feeds: { label: string; color: 
   return (
     <div style={{ padding: 32 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '55fr 45fr', gap: 0, borderBottom: `1px solid ${PA.border}`, marginBottom: 32, paddingBottom: 32 }}>
-        {/* Live wire */}
+        {/* Live wire with real thumbnails */}
         <div style={{ paddingRight: 32, borderRight: `1px solid ${PA.border}` }}>
           <SectionHeader>Live Wire · Iberian Energy</SectionHeader>
           <div style={{ maxHeight: 520, overflowY: 'auto', paddingRight: 8 }}>
-            {allItems.slice(0, 20).map((item, i) => (
-              <div key={i} style={{ paddingBottom: 14, marginBottom: 14, borderBottom: `1px solid ${PA.border}` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <Tag label={item.topicTag} color={item.topicColor} />
-                  <span style={{ fontFamily: PA.hv, fontSize: 10, fontWeight: 300, color: PA.dim }}>{item.source.toUpperCase().slice(0, 28)}</span>
-                  <span style={{ fontFamily: PA.hv, fontSize: 9, fontWeight: 300, color: PA.muted, marginLeft: 'auto' }}>{item.ago}</span>
+            {allItems.slice(0, 25).map((item, i) => (
+              <div key={i} style={{ paddingBottom: 14, marginBottom: 14, borderBottom: `1px solid ${PA.border}`, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                {item.thumb && (
+                  <img src={item.thumb} alt="" style={{ width: 120, height: 80, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }}
+                    onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+                    <Tag label={item.topicTag} color={item.topicColor} />
+                    <span style={{ fontFamily: PA.hv, fontSize: 10, fontWeight: 300, color: PA.dim }}>{item.topic}</span>
+                    <span style={{ fontFamily: PA.hv, fontSize: 9, fontWeight: 300, color: PA.muted, marginLeft: 'auto', flexShrink: 0 }}>{item.ago}</span>
+                  </div>
+                  <a href={item.link} target="_blank" rel="noopener noreferrer"
+                    style={{ fontFamily: PA.hv, fontWeight: 700, fontSize: 12, color: PA.text, textDecoration: 'none', lineHeight: 1.45, display: 'block' }}>
+                    {item.title}
+                  </a>
                 </div>
-                <a href={item.link} target="_blank" rel="noopener noreferrer"
-                  style={{ fontFamily: PA.hv, fontWeight: 700, fontSize: 12, color: PA.text, textDecoration: 'none', lineHeight: 1.45, display: 'block' }}>
-                  {item.title}
-                </a>
               </div>
             ))}
           </div>
@@ -886,11 +937,34 @@ function NewsTab({ feeds, allItems, loading }: { feeds: { label: string; color: 
         <div style={{ paddingLeft: 32 }}>
           <div style={{ fontFamily: PA.hv, fontSize: 10, fontWeight: 700, color: PA.amber, letterSpacing: '0.12em', marginBottom: 16 }}>ENERGY SIGNAL BRIEF</div>
           {allItems[0] && (
-            <div style={{ fontFamily: PA.hv, fontSize: 20, fontWeight: 700, color: PA.text, lineHeight: 1.3, marginBottom: 24, letterSpacing: '-0.01em' }}>
-              {allItems[0].title}
-            </div>
+            <>
+              {allItems[0].thumb && (
+                <img src={allItems[0].thumb} alt="" style={{ width: '100%', height: 240, objectFit: 'cover', borderRadius: 12, marginBottom: 14 }}
+                  onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <Tag label={allItems[0].topicTag} color={allItems[0].topicColor} />
+                <span style={{ fontFamily: PA.hv, fontSize: 10, fontWeight: 300, color: PA.dim }}>{allItems[0].topic}</span>
+              </div>
+              <div style={{ fontFamily: PA.hv, fontSize: 18, fontWeight: 700, color: PA.text, lineHeight: 1.3, marginBottom: 20, letterSpacing: '-0.01em' }}>
+                {allItems[0].title}
+              </div>
+            </>
           )}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, paddingTop: 16, borderTop: `1px solid ${PA.border}` }}>
+          {/* Next 3 stories */}
+          {allItems.slice(1, 4).map((item, i) => (
+            <div key={i} style={{ paddingBottom: 12, marginBottom: 12, borderBottom: `1px solid ${PA.border}`, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              {item.thumb && (
+                <img src={item.thumb} alt="" style={{ width: 90, height: 60, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }}
+                  onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+              )}
+              <a href={item.link} target="_blank" rel="noopener noreferrer"
+                style={{ fontFamily: PA.hv, fontSize: 12, fontWeight: 400, color: PA.dim, textDecoration: 'none', lineHeight: 1.4 }}>
+                {item.title}
+              </a>
+            </div>
+          ))}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, paddingTop: 16, marginTop: 8, borderTop: `1px solid ${PA.border}` }}>
             {[
               { label: 'ARTICLES LIVE', value: String(allItems.length), color: PA.text },
               { label: 'FEEDS ACTIVE',  value: `${feeds.filter(f => f.items.length > 0).length}/${NEWS_TOPICS.length}`, color: PA.green },
@@ -905,8 +979,8 @@ function NewsTab({ feeds, allItems, loading }: { feeds: { label: string; color: 
         </div>
       </div>
 
-      {/* 4-topic grid */}
-      <SectionHeader>By Topic</SectionHeader>
+      {/* 6-column topic grid for 12 feeds */}
+      <SectionHeader>By Source & Topic</SectionHeader>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: PA.border }}>
         {feeds.map(feed => (
           <div key={feed.label} style={{ background: PA.card, padding: '16px 18px' }}>
@@ -914,15 +988,24 @@ function NewsTab({ feeds, allItems, loading }: { feeds: { label: string; color: 
               {feed.label.toUpperCase()}
             </div>
             {feed.items.slice(0, 4).map((item, j) => (
-              <div key={j} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: `1px solid ${PA.border}` }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <span style={{ fontFamily: PA.hv, fontSize: 9, fontWeight: 700, color: feed.color }}>{item.source.toUpperCase().slice(0, 20)}</span>
-                  <span style={{ fontFamily: PA.hv, fontSize: 9, fontWeight: 300, color: PA.muted }}>{item.ago}</span>
+              <div key={j} style={{ marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid ${PA.border}` }}>
+                {item.thumb && j === 0 && (
+                  <img src={item.thumb} alt="" style={{ width: '100%', height: 150, objectFit: 'cover', borderRadius: 8, marginBottom: 8 }}
+                    onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                )}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  {item.thumb && j > 0 && (
+                    <img src={item.thumb} alt="" style={{ width: 80, height: 54, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }}
+                      onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                  )}
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontFamily: PA.hv, fontSize: 9, fontWeight: 300, color: PA.muted, display: 'block', marginBottom: 3 }}>{item.ago}</span>
+                    <a href={item.link} target="_blank" rel="noopener noreferrer"
+                      style={{ fontFamily: PA.hv, fontSize: 11, fontWeight: 400, color: PA.text, textDecoration: 'none', lineHeight: 1.4, display: 'block' }}>
+                      {item.title}
+                    </a>
+                  </div>
                 </div>
-                <a href={item.link} target="_blank" rel="noopener noreferrer"
-                  style={{ fontFamily: PA.hv, fontSize: 11, fontWeight: 400, color: PA.text, textDecoration: 'none', lineHeight: 1.4, display: 'block' }}>
-                  {item.title}
-                </a>
               </div>
             ))}
             {feed.items.length === 0 && <div style={{ fontFamily: PA.hv, fontSize: 11, fontWeight: 300, color: PA.muted }}>Loading…</div>}
@@ -976,7 +1059,7 @@ function PricerTab({ p, scalars }: { p: PricerData; scalars: Scalars }) {
   const numInput: CSSProperties = {
     background: PA.surface, border: `1px solid ${PA.border}`, color: PA.text,
     fontFamily: PA.hv, fontSize: 13, fontWeight: 700, padding: '4px 10px',
-    width: 90, textAlign: 'right' as const, outline: 'none', borderRadius: 3,
+    width: 90, textAlign: 'right' as const, outline: 'none', borderRadius: 20,
   }
 
   return (
@@ -1053,7 +1136,7 @@ function PricerTab({ p, scalars }: { p: PricerData; scalars: Scalars }) {
           </div>
 
           {/* Live output */}
-          <div style={{ background: PA.card, border: `1px solid ${PA.border}`, borderLeft: `4px solid ${PA.amber}`, borderRadius: 6, padding: 20, marginBottom: 20 }}>
+          <div style={{ background: PA.card, border: `1px solid ${PA.border}`, borderLeft: `4px solid ${PA.amber}`, borderRadius: 12, padding: 20, marginBottom: 20 }}>
             <div style={{ fontFamily: PA.hv, fontSize: 9, fontWeight: 700, color: PA.dim, letterSpacing: '0.1em', marginBottom: 12 }}>LIVE OUTPUT · BLACK-76</div>
             <div style={{ fontFamily: PA.hv, fontSize: 36, fontWeight: 700, color: PA.amber, lineHeight: 1, marginBottom: 4 }}>
               {call.toFixed(2)} <span style={{ fontSize: 14, fontWeight: 300, color: PA.dim }}>€/MWh</span>
@@ -1083,7 +1166,7 @@ function PricerTab({ p, scalars }: { p: PricerData; scalars: Scalars }) {
           <div style={{ marginBottom: 8, fontFamily: PA.hv, fontSize: 11, fontWeight: 300, color: PA.dim }}>
             F = {F.toFixed(2)} €/MWh · σ = {volPct}% · T = {days}d · r = 0%
           </div>
-          <div style={{ background: PA.surface, border: `1px solid ${PA.border}`, borderRadius: 4, overflow: 'hidden', marginBottom: 32 }}>
+          <div style={{ background: PA.surface, border: `1px solid ${PA.border}`, borderRadius: 14, overflow: 'hidden', marginBottom: 32 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '80px 100px 100px 80px 80px', background: PA.card, borderBottom: `1px solid ${PA.border}` }}>
               {['Moneyness', 'Strike K', 'Call Price', 'Delta', 'Vega'].map(h => (
                 <div key={h} style={{ fontFamily: PA.hv, fontSize: 9, fontWeight: 700, color: PA.dim, padding: '10px 14px', letterSpacing: '0.08em' }}>{h}</div>
@@ -1141,7 +1224,7 @@ function PricerTab({ p, scalars }: { p: PricerData; scalars: Scalars }) {
                 ['Neg Price',     `${(p.neg_price_prob*100).toFixed(2)}%`, p.neg_price_prob > 0.05 ? PA.red : PA.dim],
                 ['ITM Paths',     `${p.mc_payoff.itm_count} / 10k`,     PA.dim  ],
               ] as [string,string,string][]).map(([l,v,c]) => (
-                <div key={l} style={{ background: PA.surface, border: `1px solid ${PA.border}`, borderRadius: 4, padding: '8px 12px' }}>
+                <div key={l} style={{ background: PA.surface, border: `1px solid ${PA.border}`, borderRadius: 14, padding: '8px 12px' }}>
                   <div style={{ fontFamily: PA.hv, fontSize: 9, fontWeight: 300, color: PA.dim, marginBottom: 3 }}>{l}</div>
                   <div style={{ fontFamily: PA.hv, fontSize: 13, fontWeight: 700, color: c }}>{v}</div>
                 </div>
@@ -1157,7 +1240,6 @@ function PricerTab({ p, scalars }: { p: PricerData; scalars: Scalars }) {
 // ── SarAI tab ─────────────────────────────────────────────────────
 function SarAITab({ s }: { s: Scalars }) {
   const [autoTrade, setAutoTrade] = useState(false)
-  const [trades, setTrades]       = useState<PaperTrade[]>([...paperTrades])
   const lastRefresh = s ? new Date().toUTCString().slice(0, 25) : '—'
 
   const reason =
@@ -1185,7 +1267,7 @@ function SarAITab({ s }: { s: Scalars }) {
       {/* Left: status + decision */}
       <div>
         {/* Agent status card */}
-        <div style={{ background: PA.card, border: `1px solid ${PA.teal}`, borderLeft: `4px solid ${PA.teal}`, borderRadius: 8, padding: 20, marginBottom: 24 }}>
+        <div style={{ background: PA.card, border: `1px solid ${PA.teal}`, borderLeft: `4px solid ${PA.teal}`, borderRadius: 14, padding: 20, marginBottom: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: PA.green, display: 'inline-block', animation: 'pulse 2s infinite' }} />
             <span style={{ fontFamily: PA.hv, fontSize: 11, fontWeight: 700, color: PA.green, letterSpacing: '0.1em' }}>SarAI ONLINE</span>
@@ -1197,7 +1279,7 @@ function SarAITab({ s }: { s: Scalars }) {
         </div>
 
         {/* Current decision */}
-        <div style={{ background: PA.surface, border: `1px solid ${PA.border}`, borderRadius: 8, padding: 20, marginBottom: 24 }}>
+        <div style={{ background: PA.surface, border: `1px solid ${PA.border}`, borderRadius: 14, padding: 20, marginBottom: 24 }}>
           <div style={{ fontFamily: PA.hv, fontSize: 9, fontWeight: 700, color: PA.dim, letterSpacing: '0.1em', marginBottom: 12 }}>CURRENT DECISION</div>
           <div style={{ fontFamily: PA.hv, fontSize: 42, fontWeight: 700, color: ddc, lineHeight: 1, marginBottom: 8 }}>
             {s.cur_dir === 'LONG' ? '▲' : s.cur_dir === 'SHORT' ? '▼' : '—'} {s.cur_dir}
@@ -1215,7 +1297,7 @@ function SarAITab({ s }: { s: Scalars }) {
             <span style={{ fontFamily: PA.hv, fontSize: 11, fontWeight: 300, color: PA.dim }}>{label}</span>
           </div>
         ))}
-        <div style={{ marginTop: 12, padding: '8px 12px', borderRadius: 4, background: allPass ? 'rgba(16,185,129,0.07)' : 'rgba(239,68,68,0.07)', border: `1px solid ${allPass ? PA.green : PA.red}` }}>
+        <div style={{ marginTop: 12, padding: '8px 12px', borderRadius: 14, background: allPass ? 'rgba(16,185,129,0.07)' : 'rgba(239,68,68,0.07)', border: `1px solid ${allPass ? PA.green : PA.red}` }}>
           <span style={{ fontFamily: PA.hv, fontSize: 10, fontWeight: 700, color: allPass ? PA.green : PA.red }}>
             {allPass ? '✓ CLEAR TO TRADE' : '✗ BLOCKED'}
           </span>
@@ -1230,7 +1312,7 @@ function SarAITab({ s }: { s: Scalars }) {
               background: autoTrade ? PA.amber : 'transparent',
               color: autoTrade ? '#000' : PA.dim,
               border: `1px solid ${autoTrade ? PA.amber : PA.border}`,
-              padding: '5px 14px', cursor: 'pointer', borderRadius: 3,
+              padding: '5px 14px', cursor: 'pointer', borderRadius: 20,
             }}>
               {autoTrade ? 'ON' : 'OFF'}
             </button>
@@ -1253,7 +1335,7 @@ function SarAITab({ s }: { s: Scalars }) {
           ['REPORTING',       PA.dim,    'Daily PDF briefing via Mailjet (pending) · P&L tracker · Position monitor · REE 230-node demand map (pending)'],
         ] as [string, string, string][]).map(([layer, color, desc], i) => (
           <div key={i} style={{ display: 'flex', gap: 16, padding: '16px 0', borderBottom: `1px solid ${PA.border}`, alignItems: 'flex-start' }}>
-            <span style={{ fontFamily: PA.hv, fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', color, border: `1px solid ${color}`, padding: '3px 10px', minWidth: 100, textAlign: 'center', flexShrink: 0, marginTop: 2 }}>{layer}</span>
+            <span style={{ fontFamily: PA.hv, fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', color, border: `1px solid ${color}`, padding: '3px 12px', borderRadius: 999, flexShrink: 0, marginTop: 2 }}>{layer}</span>
             <span style={{ fontFamily: PA.hv, fontSize: 11, fontWeight: 300, color: PA.dim, lineHeight: 1.7 }}>{desc}</span>
           </div>
         ))}
@@ -1273,7 +1355,7 @@ function SarAITab({ s }: { s: Scalars }) {
             ['LATER', PA.dim,    'Bloomberg EMSX adapter (if institutional route)'],
           ] as [string, string, string][]).map(([prio, color, text], i) => (
             <div key={i} style={{ display: 'flex', gap: 14, padding: '8px 0', borderBottom: `1px solid ${PA.border}`, alignItems: 'center' }}>
-              <span style={{ fontFamily: PA.hv, fontSize: 8, fontWeight: 700, letterSpacing: '0.14em', color, border: `1px solid ${color}`, padding: '2px 8px', minWidth: 46, textAlign: 'center' }}>{prio}</span>
+              <span style={{ fontFamily: PA.hv, fontSize: 8, fontWeight: 700, letterSpacing: '0.14em', color, border: `1px solid ${color}`, padding: '2px 10px', borderRadius: 999 }}>{prio}</span>
               <span style={{ fontFamily: PA.hv, fontSize: 11, fontWeight: 300, color: PA.dim }}>{text}</span>
             </div>
           ))}
@@ -1288,8 +1370,6 @@ function ExecutionTab({ s }: { s: Scalars }) {
   const [trades, setTrades] = useState<PaperTrade[]>([])
   const [dir,  setDir]  = useState<'LONG' | 'SHORT'>('LONG')
   const [size, setSize] = useState(1)
-  const [pnl, setPnl]   = useState(0)
-
   function submitOrder() {
     const id    = tradeIdSeq++
     const entry = s.last_spot
@@ -1308,14 +1388,12 @@ function ExecutionTab({ s }: { s: Scalars }) {
         total   += t.pnl
       }
     })
-    setPnl(prev => prev + total)
     setTrades([...paperTrades])
   }
 
   const openTrades  = trades.filter(t => t.status === 'OPEN')
   const closedTrades = trades.filter(t => t.status === 'CLOSED')
   const totalPnL    = closedTrades.reduce((a, t) => a + (t.pnl ?? 0), 0)
-  const ddc = dirColor(s.cur_dir)
 
   const guardrails = [
     ['Floor discount within bounds (±50€)',  Math.abs(s.last_discount) < 50],
@@ -1331,7 +1409,7 @@ function ExecutionTab({ s }: { s: Scalars }) {
       {/* Left: order entry */}
       <div>
         <SectionHeader>Paper Order Entry</SectionHeader>
-        <div style={{ background: PA.card, border: `1px solid ${PA.border}`, borderRadius: 8, padding: 20, marginBottom: 20 }}>
+        <div style={{ background: PA.card, border: `1px solid ${PA.border}`, borderRadius: 14, padding: 20, marginBottom: 20 }}>
           <div style={{ fontFamily: PA.hv, fontSize: 9, fontWeight: 700, color: PA.dim, letterSpacing: '0.1em', marginBottom: 14 }}>DIRECTION</div>
           <div style={{ display: 'flex', gap: 1, marginBottom: 20 }}>
             {(['LONG', 'SHORT'] as const).map(d => (
@@ -1341,7 +1419,7 @@ function ExecutionTab({ s }: { s: Scalars }) {
                 color: dir === d ? '#000' : PA.dim,
                 border: `1px solid ${d === 'LONG' ? PA.green : PA.red}`,
                 padding: '10px', cursor: 'pointer',
-                borderRadius: d === 'LONG' ? '4px 0 0 4px' : '0 4px 4px 0',
+                borderRadius: d === 'LONG' ? '20px 0 0 20px' : '0 20px 20px 0',
               }}>
                 {d === 'LONG' ? '▲ LONG' : '▼ SHORT'}
               </button>
@@ -1366,7 +1444,7 @@ function ExecutionTab({ s }: { s: Scalars }) {
               width: '100%', marginTop: 16, fontFamily: PA.hv, fontSize: 13, fontWeight: 700,
               background: allPass ? (dir === 'LONG' ? PA.green : PA.red) : PA.muted,
               color: '#000', border: 'none', padding: '12px', cursor: allPass ? 'pointer' : 'not-allowed',
-              borderRadius: 4, letterSpacing: '0.05em',
+              borderRadius: 14, letterSpacing: '0.05em',
             }}>
             {allPass ? `SUBMIT PAPER ${dir}` : 'BLOCKED — GUARDRAIL FAIL'}
           </button>
@@ -1396,7 +1474,7 @@ function ExecutionTab({ s }: { s: Scalars }) {
             { label: 'CLOSED TRADES', value: String(closedTrades.length),                                color: PA.dim  },
             { label: 'REALISED P&L',  value: `${totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)} €`,     color: totalPnL > 0 ? PA.green : totalPnL < 0 ? PA.red : PA.dim },
           ].map((m, i) => (
-            <div key={i} style={{ background: PA.surface, border: `1px solid ${PA.border}`, borderRadius: 6, padding: 16 }}>
+            <div key={i} style={{ background: PA.surface, border: `1px solid ${PA.border}`, borderRadius: 12, padding: 16 }}>
               <div style={{ fontFamily: PA.hv, fontSize: 9, fontWeight: 700, color: PA.dim, letterSpacing: '0.08em', marginBottom: 8 }}>{m.label}</div>
               <div style={{ fontFamily: PA.hv, fontSize: 22, fontWeight: 700, color: m.color }}>{m.value}</div>
             </div>
@@ -1409,7 +1487,7 @@ function ExecutionTab({ s }: { s: Scalars }) {
             No paper trades yet. Submit an order above.
           </div>
         ) : (
-          <div style={{ background: PA.surface, border: `1px solid ${PA.border}`, borderRadius: 4, overflow: 'hidden' }}>
+          <div style={{ background: PA.surface, border: `1px solid ${PA.border}`, borderRadius: 14, overflow: 'hidden' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '40px 160px 60px 80px 90px 90px 90px 70px', background: PA.card, borderBottom: `1px solid ${PA.border}` }}>
               {['#', 'Time', 'Dir', 'Size', 'Entry', 'Exit', 'P&L', 'Status'].map(h => (
                 <div key={h} style={{ fontFamily: PA.hv, fontSize: 9, fontWeight: 700, color: PA.dim, padding: '8px 12px', letterSpacing: '0.08em' }}>{h}</div>
@@ -1447,7 +1525,7 @@ function ExecutionTab({ s }: { s: Scalars }) {
             ['LATER', PA.dim,    'Bloomberg EMSX adapter — post paper validation, institutional route'],
           ] as [string, string, string][]).map(([prio, color, text], i) => (
             <div key={i} style={{ display: 'flex', gap: 14, padding: '8px 0', borderBottom: `1px solid ${PA.border}`, alignItems: 'center' }}>
-              <span style={{ fontFamily: PA.hv, fontSize: 8, fontWeight: 700, letterSpacing: '0.14em', color, border: `1px solid ${color}`, padding: '2px 8px', minWidth: 46, textAlign: 'center' }}>{prio}</span>
+              <span style={{ fontFamily: PA.hv, fontSize: 8, fontWeight: 700, letterSpacing: '0.14em', color, border: `1px solid ${color}`, padding: '2px 10px', borderRadius: 999 }}>{prio}</span>
               <span style={{ fontFamily: PA.hv, fontSize: 11, fontWeight: 300, color: PA.dim }}>{text}</span>
             </div>
           ))}
@@ -1461,7 +1539,7 @@ function ExecutionTab({ s }: { s: Scalars }) {
 function NoData({ error }: { error: string | null }) {
   return (
     <div style={{ padding: 32 }}>
-      <div style={{ background: PA.card, border: `1px solid ${PA.border}`, borderLeft: `4px solid ${PA.red}`, borderRadius: 8, padding: 24 }}>
+      <div style={{ background: PA.card, border: `1px solid ${PA.border}`, borderLeft: `4px solid ${PA.red}`, borderRadius: 14, padding: 24 }}>
         <div style={{ fontFamily: PA.hv, fontSize: 12, fontWeight: 700, color: PA.red, marginBottom: 8 }}>DATA NOT AVAILABLE</div>
         <div style={{ fontFamily: PA.hv, fontSize: 12, fontWeight: 300, color: PA.dim, marginBottom: 16 }}>{error ?? 'live_data.json not found'}</div>
         <div style={{ fontFamily: PA.hv, fontSize: 11, fontWeight: 300, color: PA.muted, lineHeight: 1.8 }}>
